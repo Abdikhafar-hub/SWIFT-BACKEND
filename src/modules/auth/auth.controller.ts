@@ -1,6 +1,29 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction, CookieOptions } from "express";
 import { authService } from "./auth.service.js";
 import { AuthenticatedRequest } from "../../common/types/index.js";
+import { env } from "../../config/env.js";
+
+const REFRESH_COOKIE_NAME = "sd_refresh";
+
+function setRefreshCookie(res: Response, refreshToken: string): void {
+  const cookieOptions: CookieOptions = {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/api/v1/auth",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, cookieOptions);
+}
+
+function clearRefreshCookie(res: Response): void {
+  res.clearCookie(REFRESH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/api/v1/auth",
+  });
+}
 
 export class AuthController {
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -10,6 +33,8 @@ export class AuthController {
         req.ip || req.socket.remoteAddress,
         req.headers["user-agent"]
       );
+
+      setRefreshCookie(res, result.tokens.refreshToken);
 
       res.status(201).json({
         success: true,
@@ -30,6 +55,8 @@ export class AuthController {
         req.headers["user-agent"]
       );
 
+      setRefreshCookie(res, result.tokens.refreshToken);
+
       res.status(200).json({
         success: true,
         data: result,
@@ -41,27 +68,74 @@ export class AuthController {
 
   async refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { refreshToken } = req.body;
+      const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+      if (!refreshToken) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Refresh token cookie or payload missing.",
+          },
+        });
+        return;
+      }
+
       const result = await authService.refreshToken(
         refreshToken,
         req.ip || req.socket.remoteAddress,
         req.headers["user-agent"]
       );
 
+      setRefreshCookie(res, result.tokens.refreshToken);
+
       res.status(200).json({
         success: true,
         data: result,
       });
     } catch (error) {
+      clearRefreshCookie(res);
       next(error);
     }
   }
 
-  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { refreshToken } = req.body;
-      const result = await authService.logout(refreshToken);
+      const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+      await authService.logout(refreshToken, req.user?.id);
+      clearRefreshCookie(res);
 
+      res.status(200).json({
+        success: true,
+        data: { message: "Successfully logged out." },
+      });
+    } catch (error) {
+      clearRefreshCookie(res);
+      next(error);
+    }
+  }
+
+  async logoutAll(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.logoutAll(
+        req.user!.id,
+        req.ip || req.socket.remoteAddress,
+        req.headers["user-agent"]
+      );
+      clearRefreshCookie(res);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      clearRefreshCookie(res);
+      next(error);
+    }
+  }
+
+  async ping(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await authService.pingSession(req.user!.id);
       res.status(200).json({
         success: true,
         data: result,

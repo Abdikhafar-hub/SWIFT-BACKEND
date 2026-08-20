@@ -11,6 +11,7 @@ interface JwtPayload {
   email: string;
   role: UserRole;
   organizationId: string;
+  sessionId?: string;
 }
 
 export async function authenticate(
@@ -28,7 +29,11 @@ export async function authenticate(
     let payload: JwtPayload;
 
     try {
-      payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+      payload = jwt.verify(token, env.JWT_SECRET, {
+        algorithms: ["HS256"],
+        issuer: "swiftdoc.co.ke",
+        audience: "swiftdoc-app",
+      }) as JwtPayload;
     } catch {
       throw new UnauthorizedError("Invalid or expired authorization token");
     }
@@ -45,6 +50,56 @@ export async function authenticate(
 
     if (!user || !user.isActive || user.deletedAt) {
       throw new UnauthorizedError("User account is inactive or no longer exists");
+    }
+
+    // Require valid sessionId claim in access token payload
+    if (!payload.sessionId) {
+      throw new UnauthorizedError("Authorization token is missing session context");
+    }
+
+    // Verify server session state and expiration limits
+    const activeSession = await prisma.refreshToken.findFirst({
+      where: {
+        sessionId: payload.sessionId,
+        userId: user.id,
+        isRevoked: false,
+      },
+    });
+
+    if (!activeSession) {
+      throw new UnauthorizedError("Session has been revoked or signed out");
+    }
+
+    const now = Date.now();
+
+    // Check 12-hour absolute session expiration limit
+    if (activeSession.absoluteExpiresAt && now > activeSession.absoluteExpiresAt.getTime()) {
+      await prisma.refreshToken.updateMany({
+        where: { sessionId: payload.sessionId, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      throw new UnauthorizedError("Session absolute lifetime expired. Please sign in again.");
+    }
+
+    // Check 5-minute idle timeout (300,000 ms)
+    const idleTimeoutMs = 5 * 60 * 1000;
+    const lastActivity = activeSession.lastActivityAt ? activeSession.lastActivityAt.getTime() : activeSession.createdAt.getTime();
+
+    if (now - lastActivity > idleTimeoutMs) {
+      // Mark session revoked on server
+      await prisma.refreshToken.updateMany({
+        where: { sessionId: payload.sessionId, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      throw new UnauthorizedError("Session expired due to 5-minute inactivity");
+    }
+
+    // Throttled DB write: Update lastActivityAt at most once every 60 seconds
+    if (now - lastActivity > 60 * 1000) {
+      void prisma.refreshToken.updateMany({
+        where: { sessionId: payload.sessionId, isRevoked: false },
+        data: { lastActivityAt: new Date() },
+      });
     }
 
     const authenticatedUser: AuthenticatedUser = {

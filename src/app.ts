@@ -1,6 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { errorHandler } from "./common/middleware/error-handler.js";
@@ -34,13 +35,35 @@ import { adminAuditRoutes } from "./modules/audit/audit.routes.js";
 export const app = express();
 
 // 1. Security & Core Middleware
-app.use(helmet({ contentSecurityPolicy: false }));
 app.use(
-  cors({
-    origin: env.CORS_ORIGIN.split(",").map((o) => o.trim()),
-    credentials: true,
+  helmet({
+    contentSecurityPolicy: false, // Handled at reverse-proxy / Next.js level
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   })
 );
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim());
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-CSRF-Token"],
+  })
+);
+app.use(cookieParser());
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 

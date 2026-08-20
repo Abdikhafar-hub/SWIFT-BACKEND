@@ -337,20 +337,26 @@ model User {
 }
 
 model RefreshToken {
-  id         String    @id @default(uuid())
-  userId     String
-  tokenHash  String    @unique
-  deviceInfo String?
-  ipAddress  String?
-  isRevoked  Boolean   @default(false)
-  expiresAt  DateTime
-  createdAt  DateTime  @default(now())
-  revokedAt  DateTime?
+  id                String    @id @default(uuid())
+  userId            String
+  sessionId         String?   @default(uuid())
+  familyId          String?   @default(uuid())
+  tokenHash         String    @unique
+  deviceInfo        String?
+  ipAddress         String?
+  isRevoked         Boolean   @default(false)
+  lastActivityAt    DateTime  @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime?
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tokenHash])
+  @@index([sessionId])
+  @@index([familyId])
   @@map("refresh_tokens")
 }
 

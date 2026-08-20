@@ -44,11 +44,21 @@ export class AuthService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
-  private generateTokens(userId: string, email: string, role: UserRole, organizationId: string): AuthTokens {
+  private generateTokens(
+    userId: string,
+    email: string,
+    role: UserRole,
+    organizationId: string,
+    sessionId: string
+  ): AuthTokens {
     const accessToken = jwt.sign(
-      { userId, email, role, organizationId },
+      { userId, email, role, organizationId, sessionId },
       env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"] }
+      {
+        expiresIn: (env.JWT_EXPIRES_IN || "15m") as jwt.SignOptions["expiresIn"],
+        issuer: "swiftdoc.co.ke",
+        audience: "swiftdoc-app",
+      }
     );
 
     const refreshToken = crypto.randomBytes(40).toString("hex");
@@ -56,7 +66,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: env.JWT_EXPIRES_IN,
+      expiresIn: env.JWT_EXPIRES_IN || "15m",
     };
   }
 
@@ -151,17 +161,30 @@ export class AuthService {
       return { user, client };
     });
 
-    // 6. Generate Tokens & Store Refresh Token
-    const tokens = this.generateTokens(result.user.id, result.user.email, result.user.role, organization.id);
+    // 6. Generate Tokens & Store Session Refresh Token
+    const sessionId = crypto.randomUUID();
+    const familyId = crypto.randomUUID();
+    const tokens = this.generateTokens(
+      result.user.id,
+      result.user.email,
+      result.user.role,
+      organization.id,
+      sessionId
+    );
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const absoluteExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours absolute limit
 
     await prisma.refreshToken.create({
       data: {
         userId: result.user.id,
+        sessionId,
+        familyId,
         tokenHash: this.hashToken(tokens.refreshToken),
         deviceInfo: userAgent,
         ipAddress,
         expiresAt,
+        absoluteExpiresAt,
+        lastActivityAt: new Date(),
       },
     });
 
@@ -243,16 +266,23 @@ export class AuthService {
       },
     });
 
-    const tokens = this.generateTokens(user.id, user.email, user.role, user.organizationId);
+    const sessionId = crypto.randomUUID();
+    const familyId = crypto.randomUUID();
+    const tokens = this.generateTokens(user.id, user.email, user.role, user.organizationId, sessionId);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const absoluteExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
     await prisma.refreshToken.create({
       data: {
         userId: user.id,
+        sessionId,
+        familyId,
         tokenHash: this.hashToken(tokens.refreshToken),
         deviceInfo: userAgent,
         ipAddress,
         expiresAt,
+        absoluteExpiresAt,
+        lastActivityAt: new Date(),
       },
     });
 
@@ -303,14 +333,73 @@ export class AuthService {
       },
     });
 
-    if (!tokenRecord || tokenRecord.isRevoked || tokenRecord.expiresAt < new Date()) {
+    if (!tokenRecord) {
       throw new UnauthorizedError("Invalid or expired refresh token");
+    }
+
+    // Refresh Token Reuse Detection
+    if (tokenRecord.isRevoked) {
+      if (tokenRecord.familyId) {
+        await prisma.refreshToken.updateMany({
+          where: { familyId: tokenRecord.familyId },
+          data: { isRevoked: true, revokedAt: new Date() },
+        });
+      }
+      await createAuditLog({
+        organizationId: tokenRecord.user.organizationId,
+        actorId: tokenRecord.userId,
+        actorEmail: tokenRecord.user.email,
+        actorRole: tokenRecord.user.role,
+        action: "REFRESH_TOKEN_REUSE_DETECTED",
+        resource: "RefreshToken",
+        resourceId: tokenRecord.id,
+        ipAddress,
+        userAgent,
+      });
+      throw new UnauthorizedError("Suspicious refresh token reuse detected. All sessions revoked.");
+    }
+
+    // Expiration Checks (Refresh Token & Absolute Lifetime)
+    if (
+      tokenRecord.expiresAt < new Date() ||
+      (tokenRecord.absoluteExpiresAt && tokenRecord.absoluteExpiresAt < new Date())
+    ) {
+      await prisma.refreshToken.update({
+        where: { id: tokenRecord.id },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      throw new UnauthorizedError("Session has expired. Please sign in again.");
+    }
+
+    // 5-Minute Inactivity Timeout Check on Refresh
+    const idleTimeoutMs = 5 * 60 * 1000;
+    if (tokenRecord.lastActivityAt && Date.now() - tokenRecord.lastActivityAt.getTime() > idleTimeoutMs) {
+      await prisma.refreshToken.updateMany({
+        where: { sessionId: tokenRecord.sessionId || undefined, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      await createAuditLog({
+        organizationId: tokenRecord.user.organizationId,
+        actorId: tokenRecord.userId,
+        actorEmail: tokenRecord.user.email,
+        actorRole: tokenRecord.user.role,
+        action: "SESSION_EXPIRED_IDLE",
+        resource: "User",
+        resourceId: tokenRecord.userId,
+        ipAddress,
+        userAgent,
+      });
+      throw new UnauthorizedError("Session expired due to inactivity. Please sign in again.");
     }
 
     const { user } = tokenRecord;
     if (!user.isActive || user.deletedAt) {
       throw new UnauthorizedError("User account is inactive");
     }
+
+    const sessionId = tokenRecord.sessionId || crypto.randomUUID();
+    const familyId = tokenRecord.familyId || crypto.randomUUID();
+    const absoluteExpiresAt = tokenRecord.absoluteExpiresAt || new Date(Date.now() + 12 * 60 * 60 * 1000);
 
     // Revoke old refresh token (Rotation)
     await prisma.refreshToken.update({
@@ -321,39 +410,114 @@ export class AuthService {
       },
     });
 
-    // Issue new token pair
-    const tokens = this.generateTokens(user.id, user.email, user.role, user.organizationId);
+    // Issue new rotated token pair
+    const tokens = this.generateTokens(user.id, user.email, user.role, user.organizationId, sessionId);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await prisma.refreshToken.create({
       data: {
         userId: user.id,
+        sessionId,
+        familyId,
         tokenHash: this.hashToken(tokens.refreshToken),
         deviceInfo: userAgent,
         ipAddress,
         expiresAt,
+        absoluteExpiresAt,
+        lastActivityAt: new Date(),
       },
     });
 
     return { tokens };
   }
 
-  async logout(rawRefreshToken: string, userId?: string) {
-    const tokenHash = this.hashToken(rawRefreshToken);
-
-    await prisma.refreshToken.updateMany({
-      where: {
-        tokenHash,
-        userId: userId || undefined,
-        isRevoked: false,
-      },
-      data: {
-        isRevoked: true,
-        revokedAt: new Date(),
-      },
-    });
+  async logout(rawRefreshToken?: string, userId?: string, sessionId?: string) {
+    if (rawRefreshToken) {
+      const tokenHash = this.hashToken(rawRefreshToken);
+      const token = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+      if (token?.sessionId) {
+        await prisma.refreshToken.updateMany({
+          where: { sessionId: token.sessionId, isRevoked: false },
+          data: { isRevoked: true, revokedAt: new Date() },
+        });
+      } else {
+        await prisma.refreshToken.updateMany({
+          where: { tokenHash, isRevoked: false },
+          data: { isRevoked: true, revokedAt: new Date() },
+        });
+      }
+    } else if (sessionId) {
+      await prisma.refreshToken.updateMany({
+        where: { sessionId, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+    } else if (userId) {
+      await prisma.refreshToken.updateMany({
+        where: { userId, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+    }
 
     return { success: true };
+  }
+
+  async logoutAll(userId: string, ipAddress?: string, userAgent?: string) {
+    await prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true, revokedAt: new Date() },
+    });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      await createAuditLog({
+        organizationId: user.organizationId,
+        actorId: user.id,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: "USER_LOGOUT_ALL",
+        resource: "User",
+        resourceId: user.id,
+        ipAddress,
+        userAgent,
+      });
+    }
+
+    return { success: true, message: "Logged out from all active devices." };
+  }
+
+  async pingSession(userId: string, sessionId?: string) {
+    const whereCondition = sessionId
+      ? { sessionId, userId, isRevoked: false }
+      : { userId, isRevoked: false };
+
+    const activeSession = await prisma.refreshToken.findFirst({
+      where: whereCondition,
+    });
+
+    if (!activeSession) {
+      throw new UnauthorizedError("Active session not found or has been revoked.");
+    }
+
+    const idleTimeoutMs = 5 * 60 * 1000;
+    const now = Date.now();
+    const lastActivity = activeSession.lastActivityAt
+      ? activeSession.lastActivityAt.getTime()
+      : activeSession.createdAt.getTime();
+
+    if (now - lastActivity > idleTimeoutMs) {
+      await prisma.refreshToken.updateMany({
+        where: { sessionId: activeSession.sessionId!, isRevoked: false },
+        data: { isRevoked: true, revokedAt: new Date() },
+      });
+      throw new UnauthorizedError("Session expired due to 5-minute inactivity.");
+    }
+
+    await prisma.refreshToken.updateMany({
+      where: { sessionId: activeSession.sessionId!, isRevoked: false },
+      data: { lastActivityAt: new Date() },
+    });
+
+    return { success: true, message: "Session activity renewed successfully." };
   }
 
   async getMe(userId: string) {
