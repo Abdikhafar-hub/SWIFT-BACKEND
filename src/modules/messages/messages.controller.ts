@@ -148,7 +148,8 @@ export class ApplicationMessageController {
   // Toggle message star status
   async toggleStar(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { messageId, applicationId } = req.params;
+      const messageId = String(req.params.messageId);
+      const applicationId = req.params.applicationId ? String(req.params.applicationId) : "";
       const updated = await applicationMessageService.toggleStar(messageId, applicationId);
       res.status(200).json({ success: true, data: updated });
     } catch (error) {
