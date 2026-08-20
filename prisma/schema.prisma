@@ -1,0 +1,1366 @@
+// Swift Doc Production Database Schema — Phase 2 (Operational Application Engine & Workflow Automation)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  CLIENT
+  ADMIN
+}
+
+enum ClientType {
+  INDIVIDUAL
+  BUSINESS
+  ORGANIZATION
+}
+
+enum CommunicationChannel {
+  EMAIL
+  SMS
+  IN_APP
+  WHATSAPP
+}
+
+enum RequirementType {
+  DOCUMENT
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+}
+
+enum RequirementStatus {
+  PENDING
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CORRECTION_REQUIRED
+}
+
+enum ApplicationStatus {
+  NEW
+  QUALIFICATION
+  REQUIREMENTS_PENDING
+  DOCUMENT_REVIEW
+  READY_FOR_SUBMISSION
+  SUBMITTED
+  GOVERNMENT_PROCESSING
+  ADDITIONAL_INFORMATION_REQUIRED
+  APPROVED
+  DOCUMENT_RECEIVED
+  QUALITY_CHECK
+  READY_FOR_DELIVERY
+  DELIVERED
+  CLOSED
+  ON_HOLD
+  CANCELLED
+}
+
+enum ApplicationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SlaStatus {
+  ON_TRACK
+  AT_RISK
+  OVERDUE
+  COMPLETED
+}
+
+enum GovernmentStatus {
+  NOT_STARTED
+  PREPARING
+  READY_TO_SUBMIT
+  SUBMITTED
+  UNDER_PROCESSING
+  ACTION_REQUIRED
+  ADDITIONAL_INFORMATION_REQUIRED
+  ACKNOWLEDGED
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+  UNKNOWN
+}
+
+enum ClientActionType {
+  UPLOAD_DOCUMENT
+  REPLACE_DOCUMENT
+  PROVIDE_INFORMATION
+  CONFIRM_INFORMATION
+  MAKE_PAYMENT
+  APPROVE_DECLARATION
+  SIGN_DECLARATION
+  OTHER
+}
+
+enum ClientActionStatus {
+  OPEN
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum SlaEventCategory {
+  INTERNAL
+  CLIENT_WAITING
+  GOVERNMENT_WAITING
+}
+
+enum SlaEventType {
+  STARTED
+  PAUSED
+  RESUMED
+  STATUS_CHANGE
+  EXTENSION
+  DEADLINE_RECALCULATED
+  COMPLETED
+}
+
+enum NoteVisibility {
+  INTERNAL
+  CLIENT_VISIBLE
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  REPLACED
+  ARCHIVED
+}
+
+enum PaymentMethod {
+  MPESA
+  CASH
+  BANK
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum InvoiceLineItemCategory {
+  GOVERNMENT_FEE
+  SERVICE_FEE
+  EXPEDITED_FEE
+  COURIER_FEE
+  DOCUMENT_AUTHENTICATION
+  ADDITIONAL_SERVICE
+  TAX
+  DISCOUNT
+  OTHER
+}
+
+enum TransactionType {
+  PAYMENT
+  REVERSAL
+  REFUND
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AdjustmentType {
+  DISCOUNT
+  WAIVER
+  CORRECTION
+  ADDITIONAL_CHARGE
+  FEE_ADJUSTMENT
+}
+
+enum ReconciliationStatus {
+  MATCHED
+  UNMATCHED
+  DUPLICATE
+  SUSPICIOUS
+  REVERSED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum DeliveryMethod {
+  DIGITAL
+  PHYSICAL
+  BOTH
+}
+
+enum QCResult {
+  PASSED
+  FAILED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ==========================================
+// 1. ORGANIZATION BOUNDARY
+// ==========================================
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  email       String?
+  phone       String?
+  address     String?
+  currency    String   @default("KES")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users                 User[]
+  clients               Client[]
+  serviceCategories     ServiceCategory[]
+  services              Service[]
+  applications          Application[]
+  documents             Document[]
+  payments              Payment[]
+  paymentTransactions   PaymentTransaction[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  applicationMessages   ApplicationMessage[]
+  qualityChecks         QualityCheck[]
+  applicationDeliveries ApplicationDelivery[]
+  clientActions         ClientAction[]
+  idempotencyRecords    IdempotencyRecord[]
+  backgroundJobs        BackgroundJob[]
+  invoiceLineItems      InvoiceLineItem[]
+  paymentAllocations    PaymentAllocation[]
+  receipts              Receipt[]
+  refunds               Refund[]
+  financialAdjustments  FinancialAdjustment[]
+  reconciliationRecords ReconciliationRecord[]
+
+  @@map("organizations")
+}
+
+// ==========================================
+// 2. USERS & AUTHENTICATION
+// ==========================================
+
+model User {
+  id                   String     @id @default(uuid())
+  organizationId       String
+  email                String     @unique
+  passwordHash         String
+  role                 UserRole   @default(CLIENT)
+  isActive             Boolean    @default(true)
+  isEmailVerified      Boolean    @default(false)
+  lastLoginAt          DateTime?
+  failedLoginAttempts  Int        @default(0)
+  lockedUntil          DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  deletedAt            DateTime?
+
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientProfile          Client?                 @relation("UserClientProfile")
+  refreshTokens          RefreshToken[]
+  assignedApplications   Application[]           @relation("AssignedAdminApplications")
+  applicationAssignments ApplicationAssignment[] @relation("AdminAssigned")
+  createdAssignments    ApplicationAssignment[] @relation("AdminAssigner")
+  applicationNotes       ApplicationNote[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  uploadedDocVersions    DocumentVersion[]       @relation("UploadedBy")
+  reviewedDocVersions    DocumentVersion[]       @relation("ReviewedBy")
+  reviewedRequirements   ApplicationRequirement[] @relation("ReviewedRequirements")
+  submittedGovApps       GovernmentApplication[] @relation("SubmittedGovApps")
+  sentMessages           ApplicationMessage[]    @relation("SentMessages")
+  performedQCs           QualityCheck[]          @relation("PerformedQCs")
+  dispatchedDeliveries   ApplicationDelivery[]   @relation("DispatchedDeliveries")
+  createdClientActions   ClientAction[]          @relation("CreatedClientActions")
+  completedClientActions ClientAction[]          @relation("CompletedClientActions")
+  requestedRefunds       Refund[]                @relation("RequestedRefunds")
+  approvedRefunds        Refund[]                @relation("ApprovedRefunds")
+  createdAdjustments     FinancialAdjustment[]   @relation("CreatedAdjustments")
+  reconciledRecords      ReconciliationRecord[]  @relation("ReconciledRecords")
+  reviewedClients        Client[]                @relation("ClientReviewer")
+
+  @@index([organizationId, role])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  deviceInfo String?
+  ipAddress  String?
+  isRevoked  Boolean   @default(false)
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// ==========================================
+// 3. CLIENT DOMAIN
+// ==========================================
+
+model Client {
+  id                           String               @id @default(uuid())
+  organizationId               String
+  userId                       String?              @unique
+  clientNumber                 String               @unique // e.g. SD-CL-000001
+  clientType                   ClientType           @default(INDIVIDUAL)
+  fullName                     String
+  businessName                 String?
+  email                        String
+  phone                        String
+  alternatePhone               String?
+  nationality                  String               @default("Kenyan")
+  nationalId                   String?
+  passportNumber               String?
+  kraPin                       String?
+  address                      String?
+  county                       String?
+  city                         String?
+  postalAddress                String?
+  preferredCommunicationChannel CommunicationChannel @default(EMAIL)
+  isDuplicateFlagged           Boolean              @default(false)
+  duplicateReason              String?
+  isReviewed                   Boolean              @default(false)
+  reviewedAt                   DateTime?
+  reviewedById                 String?
+  reviewNotes                  String?
+  isActive                     Boolean              @default(true)
+  createdAt                    DateTime             @default(now())
+  updatedAt                    DateTime             @updatedAt
+  deletedAt                    DateTime?
+
+  organization                 Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                         User?                @relation("UserClientProfile", fields: [userId], references: [id], onDelete: SetNull)
+  reviewedBy                   User?                @relation("ClientReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  applications                 Application[]
+  documents                    Document[]
+  payments                     Payment[]
+  paymentTransactions          PaymentTransaction[]
+  notifications                Notification[]
+  receipts                     Receipt[]
+  refunds                      Refund[]
+
+  @@index([organizationId, clientNumber])
+  @@index([organizationId, isReviewed])
+  @@index([email])
+  @@index([phone])
+  @@index([nationalId])
+  @@index([kraPin])
+  @@index([businessName])
+  @@map("clients")
+}
+
+// ==========================================
+// 4. SERVICE CATALOG & CONFIGURABLE REQUIREMENTS
+// ==========================================
+
+model ServiceCategory {
+  id             String    @id @default(uuid())
+  organizationId String
+  code           String    @unique // e.g. CAT-BR (Business Registration)
+  slug           String    @unique // e.g. business-registration
+  name           String
+  description    String?
+  icon           String?
+  displayOrder   Int       @default(0)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  services       Service[]
+
+  @@index([organizationId, active])
+  @@map("service_categories")
+}
+
+model Service {
+  id                                  String             @id @default(uuid())
+  organizationId                      String
+  categoryId                          String
+  code                                String             @unique // e.g. SRV-BR-001
+  slug                                String             @unique // e.g. company-incorporation
+  name                                String
+  description                         String?
+  active                              Boolean            @default(true)
+  publiclyVisible                     Boolean            @default(true)
+  estimatedDuration                   String?            // e.g. "3-7 working days"
+  slaHours                            Int                @default(72)
+  requiresGovernmentProcess           Boolean            @default(true)
+  requiresDocumentReview              Boolean            @default(true)
+  requiresPayment                     Boolean            @default(true)
+  governmentFee                       Decimal            @default(0.00) @db.Decimal(12, 2)
+  serviceFee                          Decimal            @default(0.00) @db.Decimal(12, 2)
+  currency                            String             @default("KES")
+  displayOrder                        Int                @default(0)
+  defaultGovernmentAgency             String?
+  defaultGovernmentPlatform           String?
+  requiresFullPaymentBeforeSubmission Boolean            @default(true)
+  requiresGovernmentTrackingNumber    Boolean            @default(true)
+  requiresFinalDocument               Boolean            @default(true)
+  pauseSlaOnGovernmentProcessing      Boolean            @default(false)
+  pauseSlaOnClientAction              Boolean            @default(true)
+  expiryValidityMonths                Int?
+  createdAt                           DateTime           @default(now())
+  updatedAt                           DateTime           @updatedAt
+  deletedAt                           DateTime?
+
+  organization              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category                  ServiceCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  requirements              ServiceRequirement[]
+  applications              Application[]
+
+  @@index([organizationId, active])
+  @@index([categoryId])
+  @@index([slug])
+  @@map("services")
+}
+
+model ServiceRequirement {
+  id            String          @id @default(uuid())
+  serviceId     String
+  code          String          // e.g. REQ-DIRECTOR-ID
+  name          String          // e.g. "National ID or Passport for Directors"
+  description   String?
+  type          RequirementType @default(DOCUMENT)
+  required      Boolean         @default(true)
+  options       Json?           // For SELECT/MULTI_SELECT options
+  fileTypes     Json?           // Array of allowed mime types / extensions e.g. ["pdf", "jpg", "png"]
+  maxFileSizeMb Int             @default(10)
+  displayOrder  Int             @default(0)
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  service       Service         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, code])
+  @@index([serviceId, active])
+  @@map("service_requirements")
+}
+
+// ==========================================
+// 5. APPLICATION DOMAIN (CENTRAL BUSINESS ENTITY)
+// ==========================================
+
+model Application {
+  id                  String              @id @default(uuid())
+  organizationId      String
+  clientId            String
+  serviceId           String
+  assignedAdminId     String?
+  applicationNumber   String              @unique // e.g. SD-APP-2026-000001
+  status              ApplicationStatus   @default(NEW)
+  priority            ApplicationPriority @default(NORMAL)
+  slaStatus           SlaStatus           @default(ON_TRACK)
+  startedAt           DateTime            @default(now())
+  dueAt               DateTime?
+  completedAt         DateTime?
+  submittedAt         DateTime?
+  pausedAt            DateTime?
+  totalPausedDuration Int                 @default(0) // Paused duration in minutes
+  deliveredAt         DateTime?
+  notesSummary        String?
+  totalAmount         Decimal             @default(0.00) @db.Decimal(12, 2)
+  paidAmount          Decimal             @default(0.00) @db.Decimal(12, 2)
+  dueAmount           Decimal             @default(0.00) @db.Decimal(12, 2)
+  currency            String              @default("KES")
+  metadata            Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client              Client              @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  service             Service             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  assignedAdmin       User?               @relation("AssignedAdminApplications", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+
+  requirements        ApplicationRequirement[]
+  assignments         ApplicationAssignment[]
+  activities          ApplicationActivity[]
+  notes               ApplicationNote[]
+  governmentApps      GovernmentApplication[]
+  documents           Document[]
+  payments            Payment[]
+  paymentTransactions PaymentTransaction[]
+  notifications       Notification[]
+  messages            ApplicationMessage[]
+  qualityChecks       QualityCheck[]
+  deliveries          ApplicationDelivery[]
+  clientActions       ClientAction[]
+  slaEvents           ApplicationSlaEvent[]
+  receipts            Receipt[]
+
+  @@index([organizationId, status])
+  @@index([clientId, status])
+  @@index([assignedAdminId, status])
+  @@index([applicationNumber])
+  @@index([createdAt])
+  @@index([dueAt])
+  @@map("applications")
+}
+
+// Requirement Snapshot (cloned from ServiceRequirement at application creation time)
+model ApplicationRequirement {
+  id                   String                   @id @default(uuid())
+  applicationId        String
+  serviceRequirementId String?                  // Link to original requirement template if needed
+  code                 String
+  name                 String
+  description          String?
+  type                 RequirementType          @default(DOCUMENT)
+  required             Boolean                  @default(true)
+  displayOrder         Int                      @default(0)
+  isSatisfied          Boolean                  @default(false)
+  status               RequirementStatus        @default(PENDING)
+  valueText            String?
+  valueNumber          Decimal?                 @db.Decimal(12, 2)
+  valueDate            DateTime?
+  valueBoolean         Boolean?
+  valueJson            Json?
+  rejectionReason      String?
+  reviewNotes          String?
+  submittedAt          DateTime?
+  reviewedAt           DateTime?
+  reviewedById         String?
+  satisfiedAt          DateTime?
+  satisfiedById        String?
+  verifiedAt           DateTime?
+  verifiedById         String?
+  notes                String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  application          Application              @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewedBy           User?                    @relation("ReviewedRequirements", fields: [reviewedById], references: [id], onDelete: SetNull)
+  documents            Document[]
+  reviewHistory        RequirementReviewHistory[]
+  clientActions        ClientAction[]
+
+  @@index([applicationId, isSatisfied])
+  @@index([applicationId, status])
+  @@map("application_requirements")
+}
+
+model RequirementReviewHistory {
+  id                       String                 @id @default(uuid())
+  applicationRequirementId String
+  actorId                  String?
+  actorRole                UserRole?
+  action                   String                 // "SUBMIT", "UPDATE", "APPROVE", "REJECT", "REQUEST_CORRECTION"
+  previousValue            Json?
+  newValue                 Json?
+  status                   RequirementStatus
+  reason                   String?
+  notes                    String?
+  createdAt                DateTime               @default(now())
+
+  requirement              ApplicationRequirement @relation(fields: [applicationRequirementId], references: [id], onDelete: Cascade)
+
+  @@index([applicationRequirementId])
+  @@index([createdAt])
+  @@map("requirement_review_histories")
+}
+
+model ApplicationAssignment {
+  id              String      @id @default(uuid())
+  applicationId   String
+  assignedAdminId String
+  assignedById    String
+  assignedAt      DateTime    @default(now())
+  unassignedAt    DateTime?
+  reason          String?
+  createdAt       DateTime    @default(now())
+
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  assignedAdmin   User        @relation("AdminAssigned", fields: [assignedAdminId], references: [id], onDelete: Cascade)
+  assignedBy      User        @relation("AdminAssigner", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([assignedAdminId])
+  @@map("application_assignments")
+}
+
+model ApplicationActivity {
+  id            String         @id @default(uuid())
+  applicationId String
+  actorId       String?
+  actorRole     UserRole?
+  action        String         // e.g. "STATUS_TRANSITION", "ASSIGNMENT", "DOCUMENT_UPLOAD", "PAYMENT", "GOVERNMENT_SUBMISSION"
+  entityType    String?        // e.g. "Application", "Document", "Payment", "GovernmentApplication", "Delivery"
+  entityId      String?
+  fromStatus    String?
+  toStatus      String?
+  message       String
+  metadata      Json?
+  visibility    NoteVisibility @default(CLIENT_VISIBLE)
+  createdAt     DateTime       @default(now())
+
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, visibility])
+  @@index([createdAt])
+  @@map("application_activities")
+}
+
+model ApplicationNote {
+  id            String         @id @default(uuid())
+  applicationId String
+  authorId      String
+  visibility    NoteVisibility @default(INTERNAL)
+  content       String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, visibility])
+  @@map("application_notes")
+}
+
+model GovernmentApplication {
+  id                               String                    @id @default(uuid())
+  applicationId                    String
+  platform                         String                    // e.g. "eCitizen", "BRS", "iTax", "TIMS", "Immigration", "DCI", "MFA"
+  governmentAgency                 String                    @default("eCitizen")
+  governmentService                String?
+  externalReference                String?                   // Primary tracking reference e.g. BRS-2026-0001
+  trackingNumber                   String?                   // Supplemental tracking number / docket number
+  submittedAt                      DateTime?
+  submittedByAdminId               String?
+  status                           GovernmentStatus          @default(NOT_STARTED)
+  statusDescription                String?
+  lastCheckedAt                    DateTime?
+  nextFollowUpDate                 DateTime?
+  expectedCompletionAt             DateTime?
+  approvalDate                     DateTime?
+  completionDate                   DateTime?
+  completedAt                      DateTime?
+  rejectionReason                  String?
+  rejectedAt                       DateTime?
+  additionalInformationRequired    Boolean                   @default(false)
+  additionalInformationRequestedAt DateTime?
+  additionalInformationDeadline    DateTime?
+  portalUrl                        String?
+  evidenceDocumentUrl              String?
+  notes                            String?
+  metadata                         Json?
+  createdAt                        DateTime                  @default(now())
+  updatedAt                        DateTime                  @updatedAt
+
+  application                      Application               @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  submittedByAdmin                 User?                     @relation("SubmittedGovApps", fields: [submittedByAdminId], references: [id], onDelete: SetNull)
+  statusHistory                    GovernmentStatusHistory[]
+  references                       GovernmentReference[]
+
+  @@index([applicationId])
+  @@index([externalReference])
+  @@index([trackingNumber])
+  @@index([status])
+  @@index([nextFollowUpDate])
+  @@map("government_applications")
+}
+
+model GovernmentReference {
+  id                      String                @id @default(uuid())
+  governmentApplicationId String
+  referenceType           String                // e.g. "ECITIZEN_REF", "BRS_APP_NO", "KRA_REF", "TIMS_NO", "PASSPORT_NO"
+  referenceValue          String
+  issuingPlatform         String?               // e.g. "eCitizen", "BRS", "iTax"
+  metadata                Json?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  governmentApplication   GovernmentApplication @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+
+  @@index([governmentApplicationId])
+  @@index([referenceValue])
+  @@map("government_references")
+}
+
+model GovernmentStatusHistory {
+  id                      String                @id @default(uuid())
+  governmentApplicationId String
+  fromStatus              GovernmentStatus?
+  toStatus                GovernmentStatus
+  statusDescription       String?
+  notes                   String?
+  changedById             String?
+  source                  String                @default("ADMIN") // "ADMIN", "GOVERNMENT_CALLBACK", "SYSTEM", "IMPORT"
+  externalReference       String?
+  createdAt               DateTime              @default(now())
+
+  governmentApplication   GovernmentApplication @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+
+  @@index([governmentApplicationId])
+  @@index([createdAt])
+  @@map("government_status_histories")
+}
+
+// ==========================================
+// 6. APPLICATION-LINKED COMMUNICATION
+// ==========================================
+
+model ApplicationMessage {
+  id             String                        @id @default(uuid())
+  organizationId String
+  applicationId  String
+  senderId       String
+  senderRole     UserRole                      @default(CLIENT)
+  visibility     NoteVisibility                @default(CLIENT_VISIBLE)
+  message        String
+  isRead         Boolean                       @default(false)
+  readAt         DateTime?
+  createdAt      DateTime                      @default(now())
+
+  organization   Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  application    Application                   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  sender         User                          @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments    ApplicationMessageAttachment[]
+
+  @@index([applicationId, visibility])
+  @@index([organizationId])
+  @@index([createdAt])
+  @@map("application_messages")
+}
+
+model ApplicationMessageAttachment {
+  id        String             @id @default(uuid())
+  messageId String
+  fileName  String
+  fileUrl   String
+  fileSize  Int
+  mimeType  String
+  createdAt DateTime           @default(now())
+
+  message   ApplicationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("application_message_attachments")
+}
+
+// ==========================================
+// 7. QUALITY CHECK (PRE-DELIVERY QA)
+// ==========================================
+
+model QualityCheck {
+  id             String       @id @default(uuid())
+  organizationId String
+  applicationId  String
+  reviewerId     String
+  result         QCResult     @default(PASSED)
+  checklist      Json?        // { clientMatch: true, documentsLegible: true, correctService: true, requiredPagesPresent: true, govDocVerified: true }
+  notes          String?
+  failedReason   String?
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewer       User         @relation("PerformedQCs", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([organizationId])
+  @@map("quality_checks")
+}
+
+// ==========================================
+// 8. DELIVERY MANAGEMENT
+// ==========================================
+
+model ApplicationDelivery {
+  id                 String         @id @default(uuid())
+  organizationId     String
+  applicationId      String
+  deliveryMethod     DeliveryMethod @default(DIGITAL)
+  recipientName      String
+  recipientPhone     String
+  recipientEmail     String?
+  physicalAddress    String?
+  dispatchReference  String?        // e.g. "SD-DISP-2026-0001"
+  trackingNumber     String?        // Courier tracking number (e.g. Fargo, G4S, Speedaf)
+  carrier            String?        // "FARGO_COURIER", "G4S", "RIDER", "DIRECT_COLLECTION"
+  deliveredAt        DateTime?
+  deliveredById      String?
+  confirmationStatus String         @default("PENDING") // "PENDING", "DISPATCHED", "CONFIRMED"
+  proofDocumentUrl   String?
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  application        Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  deliveredBy        User?          @relation("DispatchedDeliveries", fields: [deliveredById], references: [id], onDelete: SetNull)
+
+  @@index([applicationId])
+  @@index([organizationId])
+  @@index([dispatchReference])
+  @@map("application_deliveries")
+}
+
+// ==========================================
+// 9. DOCUMENT DOMAIN
+// ==========================================
+
+model Document {
+  id                       String         @id @default(uuid())
+  organizationId           String
+  clientId                 String
+  applicationId            String?
+  applicationRequirementId String?
+  documentType             String         // e.g. "NATIONAL_ID", "KRA_PIN", "PASSPORT_PHOTO", "CERTIFICATE"
+  title                    String
+  currentVersionId         String?
+  status                   DocumentStatus @default(UPLOADED)
+  isArchived               Boolean        @default(false)
+  expiresAt                DateTime?
+  isExpired                Boolean        @default(false)
+  documentNumber           String?
+  issuingAuthority         String?
+  issuedAt                 DateTime?
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  deletedAt                DateTime?
+
+  organization             Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client                   Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  application              Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  applicationRequirement   ApplicationRequirement? @relation(fields: [applicationRequirementId], references: [id], onDelete: SetNull)
+  versions                 DocumentVersion[]
+
+  @@index([organizationId, status])
+  @@index([clientId])
+  @@index([applicationId])
+  @@index([applicationRequirementId])
+  @@index([expiresAt])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id              String    @id @default(uuid())
+  documentId      String
+  versionNumber   Int       @default(1)
+  storageProvider String    @default("CLOUDINARY") // "CLOUDINARY" | "MOCK"
+  storageKey      String    // Cloudinary public ID or file path
+  secureUrl       String    // Signed/Secure URL
+  fileName        String
+  fileSize        Int       // Size in bytes
+  mimeType        String
+  fileExtension   String
+  checksum        String?
+  uploadedById    String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  createdAt       DateTime  @default(now())
+
+  document        Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy      User?     @relation("UploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  reviewedBy      User?     @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+// ==========================================
+// 10. PAYMENT DOMAIN (FINANCIAL OPERATIONS)
+// ==========================================
+
+model Payment {
+  id             String               @id @default(uuid())
+  organizationId String
+  clientId       String
+  applicationId  String
+  invoiceNumber  String               @unique // e.g. SD-INV-2026-000001
+  currency       String               @default("KES")
+  subtotal       Decimal              @default(0.00) @db.Decimal(12, 2)
+  governmentFee  Decimal              @default(0.00) @db.Decimal(12, 2)
+  serviceFee     Decimal              @default(0.00) @db.Decimal(12, 2)
+  otherFee       Decimal              @default(0.00) @db.Decimal(12, 2)
+  discount       Decimal              @default(0.00) @db.Decimal(12, 2)
+  tax            Decimal              @default(0.00) @db.Decimal(12, 2)
+  totalAmount    Decimal              @default(0.00) @db.Decimal(12, 2)
+  amountPaid     Decimal              @default(0.00) @db.Decimal(12, 2)
+  amountDue      Decimal              @default(0.00) @db.Decimal(12, 2)
+  status         PaymentStatus        @default(PENDING)
+  isOverdue      Boolean              @default(false)
+  notes          String?
+  issuedAt       DateTime?
+  dueAt          DateTime?
+  paidAt         DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  deletedAt      DateTime?
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  application    Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  transactions   PaymentTransaction[]
+  lineItems      InvoiceLineItem[]
+  allocations    PaymentAllocation[]
+  receipts       Receipt[]
+  refunds        Refund[]
+  adjustments    FinancialAdjustment[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, isOverdue])
+  @@index([clientId])
+  @@index([applicationId])
+  @@index([dueAt])
+  @@index([issuedAt])
+  @@map("payments")
+}
+
+model PaymentTransaction {
+  id                String               @id @default(uuid())
+  paymentId         String
+  organizationId    String
+  clientId          String
+  applicationId     String?
+  transactionNumber String               @unique // e.g. SD-TX-2026-000001
+  transactionType   TransactionType      @default(PAYMENT)
+  paymentMethod     PaymentMethod        @default(MPESA)
+  amount            Decimal              @db.Decimal(12, 2)
+  currency          String               @default("KES")
+  status            PaymentStatus        @default(PENDING)
+  idempotencyKey    String               @unique
+  externalReference String?              // e.g. M-Pesa receipt code "QHG581290"
+  providerReference String?              // e.g. Daraja CheckoutRequestID
+  providerResponse  Json?
+  phoneNumber       String?              // For M-Pesa STK
+  paidAt            DateTime?
+  reversalOfId      String?
+  reversalReason    String?
+  reversedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  payment           Payment              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client            Client               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  application       Application?         @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  reversalOf        PaymentTransaction?  @relation("TransactionReversal", fields: [reversalOfId], references: [id])
+  reversals         PaymentTransaction[] @relation("TransactionReversal")
+  allocations       PaymentAllocation[]
+  receipt           Receipt?
+  refunds           Refund[]
+  reconciliationRecords ReconciliationRecord[]
+
+  @@index([paymentId])
+  @@index([externalReference])
+  @@index([providerReference])
+  @@index([idempotencyKey])
+  @@index([reversalOfId])
+  @@map("payment_transactions")
+}
+
+model InvoiceLineItem {
+  id              String                  @id @default(uuid())
+  paymentId       String
+  organizationId  String
+  description     String
+  category        InvoiceLineItemCategory @default(SERVICE_FEE)
+  quantity        Int                     @default(1)
+  unitAmount      Decimal                 @default(0.00) @db.Decimal(12, 2)
+  totalAmount     Decimal                 @default(0.00) @db.Decimal(12, 2)
+  isGovernmentFee Boolean                 @default(false)
+  isTaxable       Boolean                 @default(false)
+  metadata        Json?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  payment         Payment                 @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([organizationId])
+  @@map("invoice_line_items")
+}
+
+model PaymentAllocation {
+  id             String             @id @default(uuid())
+  transactionId  String
+  paymentId      String
+  organizationId String
+  amount         Decimal            @db.Decimal(12, 2)
+  allocatedAt    DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+
+  transaction    PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  payment        Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@index([paymentId])
+  @@index([organizationId])
+  @@map("payment_allocations")
+}
+
+model Receipt {
+  id                   String             @id @default(uuid())
+  organizationId       String
+  clientId             String
+  applicationId        String
+  paymentId            String
+  transactionId        String             @unique
+  receiptNumber        String             @unique // e.g. SD-RCP-2026-000001
+  amount               Decimal            @db.Decimal(12, 2)
+  currency             String             @default("KES")
+  paymentMethod        PaymentMethod      @default(MPESA)
+  transactionReference String?            // e.g. M-Pesa receipt code
+  payerName            String
+  amountPaid           Decimal            @db.Decimal(12, 2)
+  remainingBalance     Decimal            @db.Decimal(12, 2)
+  issuedAt             DateTime           @default(now())
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client               Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  application          Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  payment              Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transaction          PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([applicationId])
+  @@index([paymentId])
+  @@index([receiptNumber])
+  @@map("receipts")
+}
+
+model Refund {
+  id             String             @id @default(uuid())
+  organizationId String
+  clientId       String
+  paymentId      String
+  transactionId  String
+  refundNumber   String             @unique // e.g. SD-RF-2026-000001
+  amount         Decimal            @db.Decimal(12, 2)
+  currency       String             @default("KES")
+  reason         String
+  status         RefundStatus       @default(REQUESTED)
+  requestedById  String
+  approvedById   String?
+  processedAt    DateTime?
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client         Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  payment        Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transaction    PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  requestedBy    User               @relation("RequestedRefunds", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy     User?              @relation("ApprovedRefunds", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([paymentId])
+  @@index([transactionId])
+  @@index([refundNumber])
+  @@index([status])
+  @@map("refunds")
+}
+
+model FinancialAdjustment {
+  id               String         @id @default(uuid())
+  organizationId   String
+  paymentId        String
+  adjustmentNumber String         @unique // e.g. SD-ADJ-2026-000001
+  type             AdjustmentType @default(DISCOUNT)
+  amount           Decimal        @db.Decimal(12, 2) // positive for additions, negative for reductions
+  reason           String
+  createdById      String
+  appliedAt        DateTime       @default(now())
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment          Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdBy        User           @relation("CreatedAdjustments", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([paymentId])
+  @@index([adjustmentNumber])
+  @@map("financial_adjustments")
+}
+
+model ReconciliationRecord {
+  id             String               @id @default(uuid())
+  organizationId String
+  reference      String               // M-Pesa Receipt or Statement ref
+  transactionId  String?
+  amount         Decimal              @db.Decimal(12, 2)
+  currency       String               @default("KES")
+  provider       String               @default("MPESA")
+  status         ReconciliationStatus @default(UNMATCHED)
+  reconciledAt   DateTime?
+  reconciledById String?
+  notes          String?
+  metadata       Json?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transaction    PaymentTransaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  reconciledBy   User?                @relation("ReconciledRecords", fields: [reconciledById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([reference])
+  @@index([transactionId])
+  @@index([status])
+  @@map("reconciliation_records")
+}
+
+// ==========================================
+// 11. NOTIFICATIONS
+// ==========================================
+
+model Notification {
+  id             String              @id @default(uuid())
+  organizationId String
+  userId         String
+  clientId       String?
+  applicationId  String?
+  channel        NotificationChannel @default(IN_APP)
+  type           String              // e.g. "APPLICATION_CREATED", "DOCUMENT_APPROVED", "PAYMENT_RECEIVED", "SLA_WARNING"
+  title          String
+  message        String
+  status         NotificationStatus  @default(PENDING)
+  attempts       Int                 @default(0)
+  lastError      String?
+  templateKey    String?
+  readAt         DateTime?
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client         Client?             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  application    Application?        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  emailEnabled     Boolean  @default(true)
+  smsEnabled       Boolean  @default(true)
+  inAppEnabled     Boolean  @default(true)
+  marketingEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ==========================================
+// 12. IMMUTABLE AUDIT LOG
+// ==========================================
+
+model AuditLog {
+  id             String    @id @default(uuid())
+  organizationId String
+  actorId        String?
+  actorEmail     String?
+  actorRole      UserRole?
+  action         String    // e.g. "USER_LOGIN", "APPLICATION_CREATED", "STATUS_TRANSITION", "ASSIGNMENT", "DELIVERY_DISPATCHED"
+  resource       String    // e.g. "Application", "Client", "Service", "Payment", "GovernmentApplication", "Delivery"
+  resourceId     String?
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, resource, resourceId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// 13. IDEMPOTENCY RECORD
+// ==========================================
+
+model IdempotencyRecord {
+  id             String        @id @default(uuid())
+  organizationId String?
+  key            String        @unique
+  resource       String        // e.g. "PAYMENT_CALLBACK", "SLA_JOB", "NOTIFICATION"
+  resourceId     String?
+  responseBody   Json?
+  status         String        @default("COMPLETED") // "PROCESSING", "COMPLETED", "FAILED"
+  createdAt      DateTime      @default(now())
+  expiresAt      DateTime
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
+// ==========================================
+// 14. BACKGROUND JOBS
+// ==========================================
+
+model BackgroundJob {
+  id               String        @id @default(uuid())
+  organizationId   String?
+  queueName        String        @default("default")
+  jobType          String        // "SLA_SWEEP", "GOV_FOLLOWUP_SWEEP", "SEND_EMAIL", "SEND_SMS", "CLIENT_REMINDER"
+  deduplicationKey String?       @unique
+  payload          Json
+  status           JobStatus     @default(PENDING)
+  attempts         Int           @default(0)
+  maxAttempts      Int           @default(3)
+  lastError        String?
+  scheduledAt      DateTime      @default(now())
+  processedAt      DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([jobType])
+  @@index([deduplicationKey])
+  @@map("background_jobs")
+}
+
+// ==========================================
+// 15. CLIENT ACTIONS (ACTIONABLE REQUESTS)
+// ==========================================
+
+model ClientAction {
+  id              String              @id @default(uuid())
+  organizationId  String
+  applicationId   String
+  requirementId   String?
+  type            ClientActionType    @default(PROVIDE_INFORMATION)
+  title           String
+  description     String
+  priority        ApplicationPriority @default(NORMAL)
+  dueAt           DateTime?
+  status          ClientActionStatus  @default(OPEN)
+  createdById     String?
+  completedAt     DateTime?
+  completedById   String?
+  completionNotes String?
+  responsePayload Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  application     Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requirement     ApplicationRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+  createdBy       User?               @relation("CreatedClientActions", fields: [createdById], references: [id], onDelete: SetNull)
+  completedBy     User?               @relation("CompletedClientActions", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([applicationId, status])
+  @@index([dueAt])
+  @@map("client_actions")
+}
+
+// ==========================================
+// 16. APPLICATION SLA EVENTS & TIMING HISTORY
+// ==========================================
+
+model ApplicationSlaEvent {
+  id              String           @id @default(uuid())
+  applicationId   String
+  eventType       SlaEventType     @default(STATUS_CHANGE)
+  category        SlaEventCategory @default(INTERNAL)
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+  durationMinutes Int              @default(0)
+  reason          String?
+  actorId         String?
+  actorRole       UserRole?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
+
+  application     Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([category])
+  @@index([createdAt])
+  @@map("application_sla_events")
+}
+

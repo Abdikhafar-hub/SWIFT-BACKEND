@@ -1,0 +1,136 @@
+export const ROLES = {
+  CLIENT: "CLIENT",
+  ADMIN: "ADMIN",
+} as const;
+
+export type UserRole = (typeof ROLES)[keyof typeof ROLES];
+
+export const CLIENT_TYPES = {
+  INDIVIDUAL: "INDIVIDUAL",
+  BUSINESS: "BUSINESS",
+  ORGANIZATION: "ORGANIZATION",
+} as const;
+
+export type ClientType = (typeof CLIENT_TYPES)[keyof typeof CLIENT_TYPES];
+
+export const COMMUNICATION_CHANNELS = {
+  EMAIL: "EMAIL",
+  SMS: "SMS",
+  IN_APP: "IN_APP",
+  WHATSAPP: "WHATSAPP",
+} as const;
+
+export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[keyof typeof COMMUNICATION_CHANNELS];
+
+export const REQUIREMENT_TYPES = {
+  DOCUMENT: "DOCUMENT",
+  TEXT: "TEXT",
+  NUMBER: "NUMBER",
+  DATE: "DATE",
+  BOOLEAN: "BOOLEAN",
+  SELECT: "SELECT",
+  MULTI_SELECT: "MULTI_SELECT",
+} as const;
+
+export type RequirementType = (typeof REQUIREMENT_TYPES)[keyof typeof REQUIREMENT_TYPES];
+
+export const APPLICATION_STATUSES = {
+  NEW: "NEW",
+  QUALIFICATION: "QUALIFICATION",
+  REQUIREMENTS_PENDING: "REQUIREMENTS_PENDING",
+  DOCUMENT_REVIEW: "DOCUMENT_REVIEW",
+  READY_FOR_SUBMISSION: "READY_FOR_SUBMISSION",
+  SUBMITTED: "SUBMITTED",
+  GOVERNMENT_PROCESSING: "GOVERNMENT_PROCESSING",
+  ADDITIONAL_INFORMATION_REQUIRED: "ADDITIONAL_INFORMATION_REQUIRED",
+  APPROVED: "APPROVED",
+  DOCUMENT_RECEIVED: "DOCUMENT_RECEIVED",
+  QUALITY_CHECK: "QUALITY_CHECK",
+  READY_FOR_DELIVERY: "READY_FOR_DELIVERY",
+  DELIVERED: "DELIVERED",
+  CLOSED: "CLOSED",
+  ON_HOLD: "ON_HOLD",
+  CANCELLED: "CANCELLED",
+} as const;
+
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[keyof typeof APPLICATION_STATUSES];
+
+export const APPLICATION_PRIORITIES = {
+  LOW: "LOW",
+  NORMAL: "NORMAL",
+  HIGH: "HIGH",
+  URGENT: "URGENT",
+} as const;
+
+export type ApplicationPriority = (typeof APPLICATION_PRIORITIES)[keyof typeof APPLICATION_PRIORITIES];
+
+export const SLA_STATUSES = {
+  ON_TRACK: "ON_TRACK",
+  AT_RISK: "AT_RISK",
+  OVERDUE: "OVERDUE",
+  COMPLETED: "COMPLETED",
+} as const;
+
+export type SlaStatus = (typeof SLA_STATUSES)[keyof typeof SLA_STATUSES];
+
+export const NOTE_VISIBILITIES = {
+  INTERNAL: "INTERNAL",
+  CLIENT_VISIBLE: "CLIENT_VISIBLE",
+} as const;
+
+export type NoteVisibility = (typeof NOTE_VISIBILITIES)[keyof typeof NOTE_VISIBILITIES];
+
+export const DOCUMENT_STATUSES = {
+  UPLOADED: "UPLOADED",
+  PENDING_REVIEW: "PENDING_REVIEW",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  REPLACED: "REPLACED",
+  ARCHIVED: "ARCHIVED",
+} as const;
+
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[keyof typeof DOCUMENT_STATUSES];
+
+export const PAYMENT_METHODS = {
+  MPESA: "MPESA",
+  CASH: "CASH",
+  BANK: "BANK",
+  CARD: "CARD",
+  OTHER: "OTHER",
+} as const;
+
+export type PaymentMethod = (typeof PAYMENT_METHODS)[keyof typeof PAYMENT_METHODS];
+
+export const PAYMENT_STATUSES = {
+  PENDING: "PENDING",
+  PROCESSING: "PROCESSING",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+  REFUNDED: "REFUNDED",
+  PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
+} as const;
+
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[keyof typeof PAYMENT_STATUSES];
+
+export const NOTIFICATION_CHANNELS = {
+  IN_APP: "IN_APP",
+  EMAIL: "EMAIL",
+  SMS: "SMS",
+} as const;
+
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[keyof typeof NOTIFICATION_CHANNELS];
+
+export const NOTIFICATION_STATUSES = {
+  PENDING: "PENDING",
+  SENT: "SENT",
+  DELIVERED: "DELIVERED",
+  FAILED: "FAILED",
+  READ: "READ",
+} as const;
+
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[keyof typeof NOTIFICATION_STATUSES];
+
+export const DEFAULT_PAGE_SIZE = 20;
+export const MAX_PAGE_SIZE = 100;
+export const DEFAULT_CURRENCY = "KES";
