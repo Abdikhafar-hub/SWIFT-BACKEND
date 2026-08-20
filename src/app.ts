@@ -44,6 +44,17 @@ app.use(
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
 
+// Request logger middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const color = res.statusCode >= 500 ? "\x1b[31m" : res.statusCode >= 400 ? "\x1b[33m" : "\x1b[32m";
+    console.log(`${color}[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)\x1b[0m`);
+  });
+  next();
+});
+
 // 2. Health & Readiness Probes
 app.use("/health", healthRoutes);
 
@@ -78,6 +89,7 @@ v1Router.use("/client/profile", clientProfileRoutes);
 v1Router.use("/client/services", clientServiceRoutes);
 v1Router.use("/client/applications", clientApplicationRoutes);
 v1Router.use("/client/applications", clientMessageRoutes);
+v1Router.use("/client/messages", clientMessageRoutes);
 v1Router.use("/client/applications", clientTimelineRoutes);
 v1Router.use("/client/applications", clientDeliveryRoutes);
 v1Router.use("/client/notifications", notificationRoutes);
@@ -109,6 +121,7 @@ v1Router.use("/admin/clients", adminClientRoutes);
 v1Router.use("/admin/services", adminServiceRoutes);
 v1Router.use("/admin/applications", adminApplicationRoutes);
 v1Router.use("/admin/applications", adminMessageRoutes);
+v1Router.use("/admin/messages", adminMessageRoutes);
 v1Router.use("/admin/applications", adminTimelineRoutes);
 v1Router.use("/admin/quality", adminQualityRoutes);
 v1Router.use("/admin/delivery", adminDeliveryRoutes);

@@ -2900,7 +2900,70 @@ async function main() {
       },
     });
 
-    // 5.5 Unmatched External Statement
+    // 5.5 Seed Additional Multi-Category Client Dossiers (Applications 4 - 15)
+    const extraServices = await prisma.service.findMany({
+      where: { organizationId: organization.id, deletedAt: null },
+      take: 12,
+    });
+
+    const statusCycle = [
+      "NEW",
+      "REQUIREMENTS_PENDING",
+      "DOCUMENT_REVIEW",
+      "READY_FOR_SUBMISSION",
+      "SUBMITTED",
+      "GOVERNMENT_PROCESSING",
+      "ADDITIONAL_INFORMATION_REQUIRED",
+      "DOCUMENT_RECEIVED",
+      "QUALITY_CHECK",
+      "READY_FOR_DELIVERY",
+      "DELIVERED",
+      "ON_HOLD",
+    ];
+
+    for (let i = 0; i < extraServices.length; i++) {
+      const srv = extraServices[i];
+      const appNum = `SD-APP-2026-0001${String(i).padStart(2, "0")}`;
+      const statusStr = statusCycle[i % statusCycle.length];
+
+      const app = await prisma.application.upsert({
+        where: { applicationNumber: appNum },
+        update: {
+          clientId: clientProfile.id,
+          status: statusStr as any,
+        },
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          serviceId: srv.id,
+          applicationNumber: appNum,
+          status: statusStr as any,
+          priority: i % 3 === 0 ? "HIGH" : i % 5 === 0 ? "URGENT" : "NORMAL",
+          totalAmount: 5000.0,
+          paidAmount: 5000.0,
+          dueAmount: 0.0,
+        },
+      });
+
+      await prisma.applicationMessage.upsert({
+        where: { id: `seed-msg-extra-${i}` },
+        update: {},
+        create: {
+          id: `seed-msg-extra-${i}`,
+          organization: { connect: { id: organization.id } },
+          application: { connect: { id: app.id } },
+          sender: { connect: { id: adminUser.id } },
+          subject: `Statutory Processing Update: ${srv.name}`,
+          message: `Application ${appNum} for ${srv.name} is currently in state [${statusStr}]. Compliance team is actively processing your dossier.`,
+          senderRole: "ADMIN",
+          channel: "IN_APP",
+          visibility: "CLIENT_VISIBLE",
+          isRead: i > 2,
+        },
+      });
+    }
+
+    // 5.6 Unmatched External Statement
     await prisma.reconciliationRecord.upsert({
       where: { id: "seed-recon-02" },
       update: {},

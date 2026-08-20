@@ -11,6 +11,13 @@ import { UserRole } from "@prisma/client";
 
 const router = Router();
 
+// List documents (Client & Admin)
+router.get(
+  "/documents",
+  authenticateToken,
+  documentController.listDocuments
+);
+
 // Upload document (Client & Admin)
 router.post(
   "/documents",

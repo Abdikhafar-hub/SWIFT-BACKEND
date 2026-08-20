@@ -4,6 +4,17 @@ import { createAuditLog } from "../../common/utils/audit.js";
 import { UserRole, Prisma } from "@prisma/client";
 
 export class ServiceCatalogService {
+  async listCategories(organizationId?: string) {
+    const orgId = organizationId || (await prisma.organization.findFirst({ where: { slug: "swift-doc" } }))?.id || "";
+    return prisma.serviceCategory.findMany({
+      where: {
+        organizationId: orgId,
+        active: true,
+      },
+      orderBy: { displayOrder: "asc" },
+    });
+  }
+
   async listPublicServices(organizationId: string, categorySlug?: string) {
     return prisma.serviceCategory.findMany({
       where: {

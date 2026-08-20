@@ -770,6 +770,13 @@ model ApplicationMessage {
   senderId       String
   senderRole     UserRole                      @default(CLIENT)
   visibility     NoteVisibility                @default(CLIENT_VISIBLE)
+  subject        String?
+  channel        NotificationChannel           @default(IN_APP)
+  sendEmail      Boolean                       @default(false)
+  sendSms        Boolean                       @default(false)
+  emailMessageId String?
+  smsMessageId   String?
+  isStarred      Boolean                       @default(false)
   message        String
   isRead         Boolean                       @default(false)
   readAt         DateTime?
@@ -783,6 +790,7 @@ model ApplicationMessage {
   @@index([applicationId, visibility])
   @@index([organizationId])
   @@index([createdAt])
+  @@index([senderId])
   @@map("application_messages")
 }
 

@@ -22,6 +22,69 @@ import {
 import { notificationOrchestrator, BaseNotificationContext } from "../notifications/notification-orchestrator.service.js";
 
 export class DocumentService {
+  async listDocuments(
+    organizationId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      clientId?: string;
+      applicationId?: string;
+      status?: DocumentStatus;
+      search?: string;
+    },
+    actor: { id: string; role: UserRole; clientId?: string | null }
+  ) {
+    const page = Number(params.page) || 1;
+    const limit = Number(params.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const where: any = {
+      organizationId,
+      deletedAt: null,
+    };
+
+    if (actor.role === UserRole.CLIENT) {
+      where.clientId = actor.clientId || "none";
+    } else if (params.clientId) {
+      where.clientId = params.clientId;
+    }
+
+    if (params.applicationId) where.applicationId = params.applicationId;
+    if (params.status) where.status = params.status;
+    if (params.search) {
+      where.OR = [
+        { title: { contains: params.search, mode: "insensitive" } },
+        { documentType: { contains: params.search, mode: "insensitive" } },
+        { documentNumber: { contains: params.search, mode: "insensitive" } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.document.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: "desc" },
+        include: {
+          client: { select: { id: true, fullName: true, email: true } },
+          application: { select: { id: true, applicationNumber: true } },
+          versions: { orderBy: { versionNumber: "desc" }, take: 1 },
+        },
+      }),
+      prisma.document.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
   async uploadDocument(
     params: {
       organizationId: string;

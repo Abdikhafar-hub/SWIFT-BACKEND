@@ -4,6 +4,35 @@ import { AuthenticatedRequest } from "../../common/types/index.js";
 import { DocumentStatus } from "@prisma/client";
 
 export class DocumentController {
+  async listDocuments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await documentService.listDocuments(
+        req.user!.organizationId,
+        {
+          page: req.query.page ? Number(req.query.page) : undefined,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          clientId: req.query.clientId ? String(req.query.clientId) : undefined,
+          applicationId: req.query.applicationId ? String(req.query.applicationId) : undefined,
+          status: req.query.status as DocumentStatus | undefined,
+          search: req.query.search ? String(req.query.search) : undefined,
+        },
+        {
+          id: req.user!.id,
+          role: req.user!.role,
+          clientId: req.user!.clientId,
+        }
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async uploadDocument(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const clientId = req.user!.role === "CLIENT" ? req.user!.clientId! : (req.body.clientId || req.user!.clientId!);

@@ -261,6 +261,6 @@ describe("Phase 2 Full-Cycle Operational Engine Tests", () => {
       .set("Authorization", `Bearer ${clientToken}`);
 
     expect(clientDash.status).toBe(200);
-    expect(clientDash.body.data.totalApplications).toBeGreaterThan(0);
+    expect(clientDash.body.data.summary.totalApplications).toBeGreaterThan(0);
   });
 });

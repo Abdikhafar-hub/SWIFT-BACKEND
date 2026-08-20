@@ -10,6 +10,8 @@ export function errorHandler(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ): void {
+  console.error(`⚠️ Error handling [${req.method} ${req.originalUrl}]:`, err.message || err);
+
   // 1. Custom AppError
   if (err instanceof AppError) {
     res.status(err.statusCode).json({

@@ -4,6 +4,18 @@ import { AuthenticatedRequest } from "../../common/types/index.js";
 import { prisma } from "../../infrastructure/database/prisma.js";
 
 export class ServiceCatalogController {
+  async listCategories(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const categories = await serviceCatalogService.listCategories(req.user?.organizationId);
+      res.status(200).json({
+        success: true,
+        data: categories,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async listPublicServices(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       const { category } = req.query;

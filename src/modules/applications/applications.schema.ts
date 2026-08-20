@@ -6,7 +6,7 @@ import {
 } from "../../config/constants.js";
 
 export const createClientApplicationSchema = z.object({
-  serviceId: z.string().uuid("Invalid service ID"),
+  serviceId: z.string().min(1, "Service ID is required"),
   notesSummary: z.string().optional(),
   metadata: z.record(z.any()).optional(),
 });

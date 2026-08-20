@@ -7,6 +7,7 @@ import { UserRole } from "@prisma/client";
 
 // Public / Client Services: /api/v1/client/services or /api/v1/services
 export const clientServiceRoutes = Router();
+clientServiceRoutes.get("/categories", optionalAuth, serviceCatalogController.listCategories);
 clientServiceRoutes.get("/", optionalAuth, serviceCatalogController.listPublicServices);
 clientServiceRoutes.get("/:slug", optionalAuth, serviceCatalogController.getServiceBySlug);
 

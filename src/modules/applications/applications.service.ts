@@ -41,23 +41,46 @@ export class ApplicationService {
     actor: { id: string; email: string; role: UserRole; clientId?: string | null }
   ) {
     // 1. Verify Client and Service exist
-    const [client, service] = await Promise.all([
-      prisma.client.findFirst({
-        where: { id: params.clientId, organizationId: params.organizationId, deletedAt: null },
-        include: { user: true },
-      }),
-      prisma.service.findFirst({
-        where: { id: params.serviceId, organizationId: params.organizationId, deletedAt: null },
+    const client = await prisma.client.findFirst({
+      where: { id: params.clientId, organizationId: params.organizationId, deletedAt: null },
+      include: { user: true },
+    });
+
+    if (!client) throw new NotFoundError("Client");
+
+    let service = await prisma.service.findFirst({
+      where: {
+        organizationId: params.organizationId,
+        deletedAt: null,
+        OR: [{ id: params.serviceId }, { code: params.serviceId }, { slug: params.serviceId }],
+      },
+      include: {
+        requirements: {
+          where: { active: true },
+          orderBy: { displayOrder: "asc" },
+        },
+      },
+    });
+
+    // Fallback: Check if params.serviceId is a category ID or category slug
+    if (!service) {
+      service = await prisma.service.findFirst({
+        where: {
+          organizationId: params.organizationId,
+          deletedAt: null,
+          active: true,
+          OR: [{ categoryId: params.serviceId }, { category: { slug: params.serviceId } }],
+        },
+        orderBy: { displayOrder: "asc" },
         include: {
           requirements: {
             where: { active: true },
             orderBy: { displayOrder: "asc" },
           },
         },
-      }),
-    ]);
+      });
+    }
 
-    if (!client) throw new NotFoundError("Client");
     if (!service) throw new NotFoundError("Service");
 
     // 2. SLA Due Date Calculation
@@ -81,7 +104,7 @@ export class ApplicationService {
         data: {
           organizationId: params.organizationId,
           clientId: params.clientId,
-          serviceId: params.serviceId,
+          serviceId: service.id,
           assignedAdminId: params.assignedAdminId || null,
           applicationNumber,
           status: ApplicationStatus.NEW,
