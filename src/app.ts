@@ -31,6 +31,7 @@ import { adminRefundRoutes } from "./modules/financial/refunds.routes.js";
 import { adminReconciliationRoutes } from "./modules/financial/reconciliation.routes.js";
 import { notificationRouter, notificationRoutes } from "./modules/notifications/notifications.routes.js";
 import { adminAuditRoutes } from "./modules/audit/audit.routes.js";
+import { adminAccountRoutes } from "./modules/admin-account/admin-account.routes.js";
 
 export const app = express();
 
@@ -154,7 +155,9 @@ v1Router.use("/admin/invoices", adminInvoicesRoutes);
 v1Router.use("/admin/receipts", adminReceiptsRoutes);
 v1Router.use("/admin/refunds", adminRefundRoutes);
 v1Router.use("/admin/reconciliation", adminReconciliationRoutes);
+v1Router.use("/admin/audit-trail", adminAuditRoutes);
 v1Router.use("/admin/audit-logs", adminAuditRoutes);
+v1Router.use("/admin/account", adminAccountRoutes);
 
 // Mount /api/v1
 app.use(env.API_PREFIX, v1Router);

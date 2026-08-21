@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DOCUMENT_STATUSES } from "../../config/constants.js";
 
 export const uploadDocumentSchema = z.object({
+  clientId: z.string().uuid().optional().nullable(),
   applicationId: z.string().uuid().optional().nullable(),
   applicationRequirementId: z.string().uuid().optional().nullable(),
   documentType: z.string().min(2, "Document type is required"),

@@ -6,7 +6,7 @@ export const initiateMpesaPaymentSchema = z.object({
   applicationId: z.string().uuid("Invalid application ID").optional(),
   invoiceId: z.string().uuid("Invalid invoice ID").optional(),
   phoneNumber: z.string().min(9, "Phone number must be at least 9 digits"),
-  amount: z.number().positive("Amount must be greater than 0"),
+  amount: z.number().positive("Amount must be greater than 0").optional(),
   idempotencyKey: z.string().min(8, "Idempotency key is required"),
 }).refine((data) => data.applicationId || data.invoiceId, {
   message: "Either applicationId or invoiceId must be provided",

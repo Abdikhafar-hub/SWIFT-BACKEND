@@ -19,6 +19,7 @@ import {
   generateReceiptNumber,
 } from "../../common/utils/generators.js";
 import { toDecimal } from "../../common/utils/money.js";
+import { normalizeKenyanPhone } from "../../common/utils/phone.js";
 import {
   notificationOrchestrator,
   BaseNotificationContext,
@@ -34,11 +35,14 @@ export class PaymentService {
       applicationId?: string;
       invoiceId?: string;
       phoneNumber: string;
-      amount: number;
+      amount?: number;
       idempotencyKey: string;
     },
     actor: { id: string; email: string; role: UserRole; organizationId: string; clientId?: string | null }
   ) {
+    // Normalize and validate Kenyan phone number
+    const normalizedPhone = normalizeKenyanPhone(params.phoneNumber);
+
     // 1. Check idempotency
     const existingTx = await prisma.paymentTransaction.findUnique({
       where: { idempotencyKey: params.idempotencyKey },
@@ -54,7 +58,7 @@ export class PaymentService {
       };
     }
 
-    // 2. Find payment invoice
+    // 2. Find payment invoice with strict ownership validation for CLIENT role
     let payment;
     if (params.invoiceId) {
       payment = await prisma.payment.findFirst({
@@ -97,21 +101,51 @@ export class PaymentService {
     }
 
     if (!payment) {
-      throw new NotFoundError("Application Payment Record or Invoice not found");
+      throw new NotFoundError("Application Payment Record or Invoice not found or access denied.");
+    }
+
+    // 3. Strictly derive payable amount server-side from invoice amountDue. NEVER trust client amount.
+    const payableAmount = Number(payment.amountDue);
+    if (payableAmount <= 0) {
+      throw new BadRequestError(`Invoice #${payment.invoiceNumber} is already fully paid.`);
     }
 
     const transactionNumber = await generateTransactionNumber(actor.organizationId);
 
-    // 3. Call M-Pesa Daraja STK Push Provider
+    // 4. Call M-Pesa Daraja STK Push Provider
     const stkResponse = await paymentProvider.initiateStkPush({
-      phoneNumber: params.phoneNumber,
-      amount: params.amount,
+      phoneNumber: normalizedPhone,
+      amount: payableAmount,
       accountReference: payment.application.applicationNumber,
       transactionDesc: `Pay ${payment.invoiceNumber}`,
       idempotencyKey: params.idempotencyKey,
     });
 
-    // 4. Record Pending Transaction in Database
+    if (!stkResponse.success) {
+      // Record failed transaction attempt
+      await prisma.paymentTransaction.create({
+        data: {
+          paymentId: payment.id,
+          organizationId: actor.organizationId,
+          clientId: payment.clientId,
+          applicationId: payment.applicationId,
+          transactionNumber,
+          transactionType: TransactionType.PAYMENT,
+          paymentMethod: PaymentMethod.MPESA,
+          amount: new Prisma.Decimal(payableAmount),
+          currency: payment.currency,
+          status: PaymentStatus.FAILED,
+          idempotencyKey: params.idempotencyKey,
+          providerReference: stkResponse.checkoutRequestId || `failed_${Date.now()}`,
+          phoneNumber: normalizedPhone,
+          providerResponse: stkResponse as any,
+        },
+      });
+
+      throw new BadRequestError(`M-Pesa STK Push rejected: ${stkResponse.responseDescription}`);
+    }
+
+    // 5. Record Processing Transaction in Database
     const transaction = await prisma.paymentTransaction.create({
       data: {
         paymentId: payment.id,
@@ -121,12 +155,12 @@ export class PaymentService {
         transactionNumber,
         transactionType: TransactionType.PAYMENT,
         paymentMethod: PaymentMethod.MPESA,
-        amount: new Prisma.Decimal(params.amount),
+        amount: new Prisma.Decimal(payableAmount),
         currency: payment.currency,
         status: PaymentStatus.PROCESSING,
         idempotencyKey: params.idempotencyKey,
         providerReference: stkResponse.checkoutRequestId,
-        phoneNumber: params.phoneNumber,
+        phoneNumber: normalizedPhone,
         providerResponse: stkResponse as any,
       },
     });
@@ -140,7 +174,7 @@ export class PaymentService {
       resourceId: transaction.id,
       metadata: {
         transactionNumber,
-        amount: params.amount,
+        amount: payableAmount,
         checkoutRequestId: stkResponse.checkoutRequestId,
       },
     });
@@ -151,6 +185,81 @@ export class PaymentService {
       checkoutRequestId: stkResponse.checkoutRequestId,
       responseDescription: stkResponse.responseDescription,
       status: transaction.status,
+    };
+  }
+
+  /**
+   * Actively Query STK Push status from Safaricom Daraja
+   */
+  async queryStkPushStatus(
+    checkoutRequestId: string,
+    actor: { id: string; role: UserRole; organizationId: string; clientId?: string | null }
+  ) {
+    const transaction = await prisma.paymentTransaction.findFirst({
+      where: {
+        providerReference: checkoutRequestId,
+        organizationId: actor.organizationId,
+        clientId: actor.role === UserRole.CLIENT ? actor.clientId || "none" : undefined,
+      },
+      include: {
+        payment: true,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundError("Payment transaction not found for CheckoutRequestID");
+    }
+
+    if (transaction.status === PaymentStatus.COMPLETED || transaction.status === PaymentStatus.PAID) {
+      return {
+        transactionId: transaction.id,
+        status: transaction.status,
+        checkoutRequestId,
+        isFinal: true,
+        message: "Transaction is already finalized.",
+      };
+    }
+
+    const queryResult = await paymentProvider.queryTransactionStatus(checkoutRequestId);
+
+    if (queryResult.isSuccess) {
+      await this.handleMpesaCallback({
+        Body: {
+          stkCallback: {
+            MerchantRequestID: queryResult.merchantRequestId || transaction.providerReference,
+            CheckoutRequestID: checkoutRequestId,
+            ResultCode: 0,
+            ResultDesc: queryResult.resultDesc,
+            CallbackMetadata: {
+              Item: [
+                { Name: "MpesaReceiptNumber", Value: queryResult.mpesaReceiptNumber },
+                { Name: "Amount", Value: queryResult.amount || Number(transaction.amount) },
+                { Name: "PhoneNumber", Value: queryResult.phoneNumber || transaction.phoneNumber },
+              ],
+            },
+          },
+        },
+      });
+    } else if (queryResult.resultCode !== 0 && queryResult.resultCode !== 1) {
+      await prisma.paymentTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          status: PaymentStatus.FAILED,
+          providerResponse: queryResult as any,
+        },
+      });
+    }
+
+    const updatedTx = await prisma.paymentTransaction.findUnique({
+      where: { id: transaction.id },
+    });
+
+    return {
+      transactionId: transaction.id,
+      status: updatedTx?.status || transaction.status,
+      checkoutRequestId,
+      resultCode: queryResult.resultCode,
+      resultDesc: queryResult.resultDesc,
     };
   }
 

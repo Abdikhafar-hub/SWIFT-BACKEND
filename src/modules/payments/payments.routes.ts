@@ -26,6 +26,16 @@ clientPaymentRoutes.post(
 );
 
 clientPaymentRoutes.get(
+  "/stkpush/query/:checkoutRequestId",
+  paymentController.queryStkStatus.bind(paymentController)
+);
+
+clientPaymentRoutes.post(
+  "/stkpush/query",
+  paymentController.queryStkStatus.bind(paymentController)
+);
+
+clientPaymentRoutes.get(
   "/",
   validateQuery(listTransactionsQuerySchema),
   paymentController.listClientTransactions.bind(paymentController)

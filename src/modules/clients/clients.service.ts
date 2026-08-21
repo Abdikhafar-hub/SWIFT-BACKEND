@@ -6,6 +6,8 @@ import { detectDuplicateClient } from "../../common/utils/duplicate-detector.js"
 import { createAuditLog } from "../../common/utils/audit.js";
 import { PaginatedResult } from "../../common/types/index.js";
 
+import { emailService } from "../../infrastructure/email/index.js";
+
 export class ClientService {
   async getClientProfile(clientId: string) {
     const client = await prisma.client.findUnique({
@@ -42,6 +44,7 @@ export class ClientService {
   async updateClientProfile(clientId: string, data: Prisma.ClientUpdateInput, actorId?: string, actorRole?: UserRole) {
     const existing = await prisma.client.findUnique({
       where: { id: clientId },
+      include: { user: true },
     });
 
     if (!existing || existing.deletedAt) {
@@ -52,6 +55,20 @@ export class ClientService {
       where: { id: clientId },
       data,
     });
+
+    // Check if onboarding was completed with verified email
+    if (existing.user && existing.user.isEmailVerified && !existing.user.onboardingCompleted) {
+      await prisma.user.update({
+        where: { id: existing.user.id },
+        data: {
+          onboardingCompleted: true,
+          onboardingCompletedAt: new Date(),
+        },
+      });
+
+      // DISPATCH WELCOME EMAIL NOW - Only after email verification & profile onboarding!
+      void emailService.sendWelcomeEmail(existing.user.email, updated.fullName, updated.clientNumber);
+    }
 
     await createAuditLog({
       organizationId: existing.organizationId,

@@ -1,4 +1,23 @@
 import { env } from "../../config/env.js";
+import {
+  renderEmailVerificationEmail,
+  renderWelcomeEmail,
+  renderPasswordResetEmail,
+  renderPasswordResetSuccessEmail,
+  renderApplicationCreatedEmail,
+  renderApplicationStatusUpdatedEmail,
+  renderRequirementNeededEmail,
+  renderDocumentApprovedEmail,
+  renderDocumentRejectedEmail,
+  renderPaymentReceivedEmail,
+  renderInvoiceIssuedEmail,
+  renderRefundCompletedEmail,
+  renderDeliveryDispatchedEmail,
+  renderDocumentExpiryWarningEmail,
+  renderAdminNewRegistrationEmail,
+  renderEmailChangeOtpEmail,
+  renderAdminPasswordChangedEmail,
+} from "./email-templates.js";
 
 export interface SendEmailInput {
   to: string;
@@ -14,16 +33,23 @@ export interface SendEmailOutput {
 
 export interface IEmailService {
   sendEmail(input: SendEmailInput): Promise<SendEmailOutput>;
-  sendWelcomeEmail(to: string, name: string): Promise<SendEmailOutput>;
+  sendEmailVerificationEmail(to: string, name: string, otp: string, expiresMinutes?: number): Promise<SendEmailOutput>;
+  sendWelcomeEmail(to: string, name: string, clientNumber?: string): Promise<SendEmailOutput>;
+  sendPasswordResetEmail(to: string, name: string, resetLink: string, expiresMinutes?: number): Promise<SendEmailOutput>;
+  sendPasswordResetSuccessEmail(to: string, name: string): Promise<SendEmailOutput>;
+  sendEmailChangeOtpEmail(to: string, name: string, newEmail: string, otp: string, expiresMinutes?: number): Promise<SendEmailOutput>;
+  sendAdminPasswordChangedEmail(to: string, name: string): Promise<SendEmailOutput>;
   sendApplicationCreatedEmail(to: string, name: string, appNumber: string, serviceName: string): Promise<SendEmailOutput>;
-  sendRequirementNeededEmail(to: string, name: string, appNumber: string, requirementName: string): Promise<SendEmailOutput>;
+  sendApplicationStatusUpdatedEmail(to: string, name: string, appNumber: string, newStatus: string, statusDescription?: string): Promise<SendEmailOutput>;
+  sendRequirementNeededEmail(to: string, name: string, appNumber: string, requirementName: string, deadline?: string): Promise<SendEmailOutput>;
   sendDocumentApprovedEmail(to: string, name: string, appNumber: string, documentTitle: string): Promise<SendEmailOutput>;
   sendDocumentRejectedEmail(to: string, name: string, appNumber: string, documentTitle: string, reason: string): Promise<SendEmailOutput>;
-  sendPaymentReceivedEmail(to: string, name: string, appNumber: string, amount: string, receiptNumber: string): Promise<SendEmailOutput>;
-  sendApplicationStatusUpdatedEmail(to: string, name: string, appNumber: string, newStatus: string): Promise<SendEmailOutput>;
-  sendApplicationCompletedEmail(to: string, name: string, appNumber: string): Promise<SendEmailOutput>;
-  sendPasswordResetEmail(to: string, name: string, resetToken: string, resetLink: string): Promise<SendEmailOutput>;
-  sendPasswordResetSuccessEmail(to: string, name: string): Promise<SendEmailOutput>;
+  sendPaymentReceivedEmail(to: string, name: string, appNumber: string, amount: string, receiptNumber: string, transactionRef?: string): Promise<SendEmailOutput>;
+  sendInvoiceIssuedEmail(to: string, name: string, invoiceNumber: string, appNumber: string, serviceName: string, totalAmount: string, dueAt?: string | null): Promise<SendEmailOutput>;
+  sendRefundCompletedEmail(to: string, name: string, refundNumber: string, amount: string, invoiceNumber?: string, appNumber?: string): Promise<SendEmailOutput>;
+  sendDeliveryDispatchedEmail(to: string, name: string, appNumber: string, serviceName: string, deliveryMethod: string, trackingNumber?: string): Promise<SendEmailOutput>;
+  sendDocumentExpiryWarningEmail(to: string, name: string, documentTitle: string, expiryDate: Date | string): Promise<SendEmailOutput>;
+  sendAdminNewRegistrationEmail(to: string, clientName: string, clientNumber: string, clientEmail: string, clientPhone: string, clientType: string): Promise<SendEmailOutput>;
 }
 
 export class MockEmailProvider implements IEmailService {
@@ -35,94 +61,95 @@ export class MockEmailProvider implements IEmailService {
     return { success: true, messageId };
   }
 
-  async sendWelcomeEmail(to: string, name: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: "Welcome to Swift Doc Documentation Services",
-      html: `<h1>Welcome ${name}!</h1><p>Your Swift Doc account has been created. You can now access your applications, requirements, and document delivery portal.</p>`,
-    });
+  async sendEmailVerificationEmail(to: string, name: string, otp: string, expiresMinutes: number = 10): Promise<SendEmailOutput> {
+    console.log(`[EMAIL] OTP Verification Email dispatched to ${to}: Code ${otp}`);
+    const tmpl = renderEmailVerificationEmail({ name, otp, expiresMinutes });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
   }
 
-  async sendApplicationCreatedEmail(to: string, name: string, appNumber: string, serviceName: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Application Lodged: ${appNumber} - ${serviceName}`,
-      html: `<h2>Dear ${name},</h2><p>Your application <strong>${appNumber}</strong> for <strong>${serviceName}</strong> has been received and initialized in our system.</p>`,
-    });
+  async sendWelcomeEmail(to: string, name: string, clientNumber?: string): Promise<SendEmailOutput> {
+    console.log(`[EMAIL] Welcome & Account Activated Email dispatched to ${to}`);
+    const tmpl = renderWelcomeEmail({ name, clientNumber });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
   }
 
-  async sendRequirementNeededEmail(to: string, name: string, appNumber: string, requirementName: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Action Required: Outstanding Requirement for ${appNumber}`,
-      html: `<h2>Dear ${name},</h2><p>Please upload or provide <strong>${requirementName}</strong> for application <strong>${appNumber}</strong>.</p>`,
-    });
-  }
-
-  async sendDocumentApprovedEmail(to: string, name: string, appNumber: string, documentTitle: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Document Approved: ${documentTitle} (${appNumber})`,
-      html: `<h2>Dear ${name},</h2><p>Your document <strong>${documentTitle}</strong> for application <strong>${appNumber}</strong> has been reviewed and approved.</p>`,
-    });
-  }
-
-  async sendDocumentRejectedEmail(to: string, name: string, appNumber: string, documentTitle: string, reason: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Document Resubmission Required: ${documentTitle} (${appNumber})`,
-      html: `<h2>Dear ${name},</h2><p>Your document <strong>${documentTitle}</strong> requires correction: ${reason}. Please re-upload via your client portal.</p>`,
-    });
-  }
-
-  async sendPaymentReceivedEmail(to: string, name: string, appNumber: string, amount: string, receiptNumber: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Payment Receipt: ${receiptNumber} (${appNumber})`,
-      html: `<h2>Dear ${name},</h2><p>Payment of <strong>KES ${amount}</strong> for application <strong>${appNumber}</strong> has been confirmed. Receipt: ${receiptNumber}.</p>`,
-    });
-  }
-
-  async sendApplicationStatusUpdatedEmail(to: string, name: string, appNumber: string, newStatus: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Status Update: ${appNumber} is now ${newStatus}`,
-      html: `<h2>Dear ${name},</h2><p>Application <strong>${appNumber}</strong> has moved to status: <strong>${newStatus}</strong>.</p>`,
-    });
-  }
-
-  async sendApplicationCompletedEmail(to: string, name: string, appNumber: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: `Application Completed: ${appNumber}`,
-      html: `<h2>Dear ${name},</h2><p>Great news! Application <strong>${appNumber}</strong> has been successfully completed and your final deliverables are ready.</p>`,
-    });
-  }
-
-  async sendPasswordResetEmail(to: string, name: string, resetToken: string, resetLink: string): Promise<SendEmailOutput> {
-    console.log(`[EMAIL] Password reset token generated for ${to}: ${resetToken}`);
-    console.log(`[EMAIL] Password reset link: ${resetLink}`);
-    return this.sendEmail({
-      to,
-      subject: "Password Reset Request - Swift Doc",
-      html: `<h2>Dear ${name},</h2>
-<p>We received a request to reset your Swift Doc account password.</p>
-<p><a href="${resetLink}" style="display:inline-block;padding:12px 24px;background:#c59b27;color:#ffffff;text-decoration:none;border-radius:4px;font-weight:bold;">Reset Password</a></p>
-<p>Alternatively, copy and paste this link into your browser:</p>
-<p><a href="${resetLink}">${resetLink}</a></p>
-<p>This password reset link will expire in 1 hour.</p>
-<p>If you did not request a password reset, please disregard this email.</p>`,
-    });
+  async sendPasswordResetEmail(to: string, name: string, resetLink: string, expiresMinutes: number = 60): Promise<SendEmailOutput> {
+    console.log(`[EMAIL] Password Reset Email dispatched to ${to}`);
+    const tmpl = renderPasswordResetEmail({ name, resetLink, expiresMinutes });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
   }
 
   async sendPasswordResetSuccessEmail(to: string, name: string): Promise<SendEmailOutput> {
-    return this.sendEmail({
-      to,
-      subject: "Password Reset Successful - Swift Doc",
-      html: `<h2>Dear ${name},</h2>
-<p>Your password for Swift Doc has been reset successfully. You can now sign in using your new password.</p>
-<p>If you did not make this change, please contact our support team immediately at compliance@swiftdoc.co.ke.</p>`,
-    });
+    console.log(`[EMAIL] Password Reset Success Email dispatched to ${to}`);
+    const tmpl = renderPasswordResetSuccessEmail({ name });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendEmailChangeOtpEmail(to: string, name: string, newEmail: string, otp: string, expiresMinutes: number = 10): Promise<SendEmailOutput> {
+    console.log(`[EMAIL] Email Change OTP Verification Email dispatched to ${to} (new email: ${newEmail}): OTP ${otp}`);
+    const tmpl = renderEmailChangeOtpEmail({ name, newEmail, otp, expiresMinutes });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendAdminPasswordChangedEmail(to: string, name: string): Promise<SendEmailOutput> {
+    console.log(`[EMAIL] Admin Password Changed Security Notification dispatched to ${to}`);
+    const tmpl = renderAdminPasswordChangedEmail({ name });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendApplicationCreatedEmail(to: string, name: string, appNumber: string, serviceName: string): Promise<SendEmailOutput> {
+    const tmpl = renderApplicationCreatedEmail({ name, appNumber, serviceName });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendApplicationStatusUpdatedEmail(to: string, name: string, appNumber: string, newStatus: string, statusDescription?: string): Promise<SendEmailOutput> {
+    const tmpl = renderApplicationStatusUpdatedEmail({ name, appNumber, serviceName: "Statutory Service", newStatus, statusDescription });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendRequirementNeededEmail(to: string, name: string, appNumber: string, requirementName: string, deadline?: string): Promise<SendEmailOutput> {
+    const tmpl = renderRequirementNeededEmail({ name, appNumber, requirementName, deadline });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendDocumentApprovedEmail(to: string, name: string, appNumber: string, documentTitle: string): Promise<SendEmailOutput> {
+    const tmpl = renderDocumentApprovedEmail({ name, appNumber, documentTitle });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendDocumentRejectedEmail(to: string, name: string, appNumber: string, documentTitle: string, reason: string): Promise<SendEmailOutput> {
+    const tmpl = renderDocumentRejectedEmail({ name, appNumber, documentTitle, reason });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendPaymentReceivedEmail(to: string, name: string, appNumber: string, amount: string, receiptNumber: string, transactionRef?: string): Promise<SendEmailOutput> {
+    const tmpl = renderPaymentReceivedEmail({ name, appNumber, amount, receiptNumber, transactionRef });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendInvoiceIssuedEmail(to: string, name: string, invoiceNumber: string, appNumber: string, serviceName: string, totalAmount: string, dueAt?: string | null): Promise<SendEmailOutput> {
+    const tmpl = renderInvoiceIssuedEmail({ name, invoiceNumber, appNumber, serviceName, totalAmount, dueAt });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendRefundCompletedEmail(to: string, name: string, refundNumber: string, amount: string, invoiceNumber?: string, appNumber?: string): Promise<SendEmailOutput> {
+    const tmpl = renderRefundCompletedEmail({ name, refundNumber, amount, invoiceNumber, appNumber });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendDeliveryDispatchedEmail(to: string, name: string, appNumber: string, serviceName: string, deliveryMethod: string, trackingNumber?: string): Promise<SendEmailOutput> {
+    const tmpl = renderDeliveryDispatchedEmail({ name, appNumber, serviceName, deliveryMethod, trackingNumber });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendDocumentExpiryWarningEmail(to: string, name: string, documentTitle: string, expiryDate: Date | string): Promise<SendEmailOutput> {
+    const tmpl = renderDocumentExpiryWarningEmail({ name, documentTitle, expiryDate });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
+  }
+
+  async sendAdminNewRegistrationEmail(to: string, clientName: string, clientNumber: string, clientEmail: string, clientPhone: string, clientType: string): Promise<SendEmailOutput> {
+    const tmpl = renderAdminNewRegistrationEmail({ clientName, clientNumber, clientEmail, clientPhone, clientType });
+    return this.sendEmail({ to, subject: tmpl.subject, html: tmpl.html });
   }
 }
 
@@ -137,6 +164,7 @@ export class ResendEmailProvider extends MockEmailProvider {
   }
 
   override async sendEmail(input: SendEmailInput): Promise<SendEmailOutput> {
+    this.sentEmails.push(input);
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",

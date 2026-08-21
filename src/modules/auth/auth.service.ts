@@ -101,7 +101,13 @@ export class AuthService {
     // 4. Hash password
     const passwordHash = await bcrypt.hash(dto.password, env.BCRYPT_SALT_ROUNDS);
 
-    // 5. Atomic Transaction: Create User + Client Profile + Audit Log
+    // 5. Generate 6-digit Email Verification OTP
+    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = this.hashToken(rawOtp);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const otpResendAfter = new Date(Date.now() + 60 * 1000); // 60 seconds cooldown
+
+    // 6. Atomic Transaction: Create User + Client Profile + Audit Log
     const result = await prisma.$transaction(async (tx) => {
       const clientNumber = await generateClientNumber(organization.id);
 
@@ -113,6 +119,11 @@ export class AuthService {
           role: UserRole.CLIENT,
           isActive: true,
           isEmailVerified: false,
+          otpHash,
+          otpExpiresAt,
+          otpAttempts: 0,
+          otpResendAfter,
+          onboardingCompleted: false,
         },
       });
 
@@ -161,7 +172,7 @@ export class AuthService {
       return { user, client };
     });
 
-    // 6. Generate Tokens & Store Session Refresh Token
+    // 7. Generate Tokens & Store Session Refresh Token
     const sessionId = crypto.randomUUID();
     const familyId = crypto.randomUUID();
     const tokens = this.generateTokens(
@@ -188,8 +199,9 @@ export class AuthService {
       },
     });
 
-    // 7. Trigger Welcome Email & Admin Notification (Async background)
-    void emailService.sendWelcomeEmail(result.user.email, result.client.fullName);
+    // 8. Send Verification OTP Email & Admin Notification (Async background)
+    // NOTE: Welcome Email MUST NOT be sent here! It is sent ONLY after email verification and client onboarding.
+    void emailService.sendEmailVerificationEmail(result.user.email, result.client.fullName, rawOtp);
     void notificationOrchestrator.notifyAdminNewRegistration({
       organizationId: organization.id,
       clientId: result.client.id,
@@ -229,11 +241,47 @@ export class AuthService {
       },
     });
 
+    const actorName = user?.clientProfile?.fullName || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email || normalizedEmail);
+
     if (!user || user.deletedAt || !user.isActive) {
+      if (user) {
+        await createAuditLog({
+          organizationId: user.organizationId,
+          actorId: user.id,
+          actorName,
+          actorEmail: user.email,
+          actorRole: user.role,
+          action: "USER_LOGIN_FAILED",
+          actionCategory: "AUTH",
+          description: `Failed login attempt for inactive or deleted user (${normalizedEmail})`,
+          entityType: "User",
+          entityId: user.id,
+          entityReference: normalizedEmail,
+          status: "FAILURE",
+          ipAddress,
+          userAgent,
+        });
+      }
       throw new UnauthorizedError("Invalid email or password");
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
+      await createAuditLog({
+        organizationId: user.organizationId,
+        actorId: user.id,
+        actorName,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: "USER_LOGIN_LOCKED",
+        actionCategory: "AUTH",
+        description: `Blocked login attempt for locked account (${user.email})`,
+        entityType: "User",
+        entityId: user.id,
+        entityReference: user.email,
+        status: "WARNING",
+        ipAddress,
+        userAgent,
+      });
       throw new UnauthorizedError(
         `Account is temporarily locked due to failed attempts. Try again after ${user.lockedUntil.toLocaleTimeString()}`
       );
@@ -251,6 +299,23 @@ export class AuthService {
           failedLoginAttempts: failedAttempts,
           lockedUntil,
         },
+      });
+
+      await createAuditLog({
+        organizationId: user.organizationId,
+        actorId: user.id,
+        actorName,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: "USER_LOGIN_FAILED",
+        actionCategory: "AUTH",
+        description: `Failed login password verification for ${user.email} (Attempt ${failedAttempts})`,
+        entityType: "User",
+        entityId: user.id,
+        entityReference: user.email,
+        status: "FAILURE",
+        ipAddress,
+        userAgent,
       });
 
       throw new UnauthorizedError("Invalid email or password");
@@ -289,11 +354,16 @@ export class AuthService {
     await createAuditLog({
       organizationId: user.organizationId,
       actorId: user.id,
+      actorName,
       actorEmail: user.email,
       actorRole: user.role,
       action: "USER_LOGIN",
-      resource: "User",
-      resourceId: user.id,
+      actionCategory: "AUTH",
+      description: `${user.role === UserRole.ADMIN ? "Admin" : "Client"} ${actorName} (${user.email}) successfully logged into the Swift Doc platform.`,
+      entityType: "User",
+      entityId: user.id,
+      entityReference: user.email,
+      status: "SUCCESS",
       ipAddress,
       userAgent,
     });
@@ -540,12 +610,24 @@ export class AuthService {
       throw new NotFoundError("User");
     }
 
+    const fullName = user.firstName && user.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user.firstName || user.lastName || user.clientProfile?.fullName || "Operations Admin";
+
     return {
       id: user.id,
       email: user.email,
       role: user.role,
       isEmailVerified: user.isEmailVerified,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName,
+      phone: user.phone,
+      avatarUrl: user.avatarUrl,
+      jobTitle: user.jobTitle,
+      department: user.department,
       createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
       organization: user.organization,
       clientProfile: user.clientProfile,
     };
@@ -581,7 +663,7 @@ export class AuthService {
     const resetLink = `${clientOrigin}/reset-password?token=${resetToken}`;
     const clientName = user.clientProfile?.fullName || "Valued Client";
 
-    void emailService.sendPasswordResetEmail(user.email, clientName, resetToken, resetLink);
+    void emailService.sendPasswordResetEmail(user.email, clientName, resetLink, 60);
 
     await createAuditLog({
       organizationId: user.organizationId,
@@ -717,15 +799,57 @@ export class AuthService {
       throw new NotFoundError("User");
     }
 
-    const cleanedCode = code.trim();
-    if (!cleanedCode || cleanedCode.length < 4) {
-      throw new BadRequestError("Invalid verification code.");
+    if (user.isEmailVerified) {
+      return {
+        success: true,
+        isEmailVerified: true,
+        message: "Account email is already verified.",
+      };
     }
 
+    const cleanedCode = code.trim();
+    if (!cleanedCode || cleanedCode.length !== 6 || !/^\d{6}$/.test(cleanedCode)) {
+      throw new BadRequestError("Please enter a valid 6-digit verification code.");
+    }
+
+    // Check OTP Expiration
+    if (!user.otpHash || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+      throw new BadRequestError("Verification code has expired. Please request a new code.");
+    }
+
+    // Check Maximum Attempt Limit (5 max)
+    if (user.otpAttempts >= 5) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { otpHash: null, otpExpiresAt: null, otpAttempts: 0 },
+      });
+      throw new BadRequestError("Too many failed attempts. Please request a new verification code.");
+    }
+
+    // Cryptographic Hash Comparison
+    const submittedHash = this.hashToken(cleanedCode);
+    if (submittedHash !== user.otpHash) {
+      const nextAttempts = user.otpAttempts + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { otpAttempts: nextAttempts },
+      });
+      const remainingAttempts = 5 - nextAttempts;
+      throw new BadRequestError(
+        `Incorrect verification code. ${remainingAttempts > 0 ? `${remainingAttempts} attempt(s) remaining.` : "Please request a new code."}`
+      );
+    }
+
+    // Verification Success: Transition state & clear OTP metadata
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: {
         isEmailVerified: true,
+        emailVerifiedAt: new Date(),
+        otpHash: null,
+        otpExpiresAt: null,
+        otpAttempts: 0,
+        otpResendAfter: null,
       },
     });
 
@@ -737,7 +861,6 @@ export class AuthService {
       action: "EMAIL_VERIFIED",
       resource: "User",
       resourceId: user.id,
-      metadata: { code: cleanedCode },
     });
 
     return {
@@ -757,13 +880,41 @@ export class AuthService {
       throw new NotFoundError("User");
     }
 
-    const otp = "123456";
-    console.log(`[AUTH] Verification OTP for ${user.email}: ${otp}`);
+    if (user.isEmailVerified) {
+      return {
+        success: true,
+        message: "Email is already verified.",
+      };
+    }
+
+    // Enforce 60-Second Cooldown Limit
+    if (user.otpResendAfter && user.otpResendAfter > new Date()) {
+      const remainingSecs = Math.ceil((user.otpResendAfter.getTime() - Date.now()) / 1000);
+      throw new BadRequestError(`Please wait ${remainingSecs} second(s) before requesting another verification code.`);
+    }
+
+    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = this.hashToken(rawOtp);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const otpResendAfter = new Date(Date.now() + 60 * 1000); // 60 seconds
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        otpHash,
+        otpExpiresAt,
+        otpAttempts: 0,
+        otpResendAfter,
+      },
+    });
+
+    const clientName = user.clientProfile?.fullName || "Valued Client";
+    void emailService.sendEmailVerificationEmail(user.email, clientName, rawOtp);
 
     return {
       success: true,
-      message: `A 6-digit verification code has been sent to ${user.email}.`,
-      mockOtp: env.NODE_ENV === "development" ? otp : undefined,
+      message: `A new 6-digit verification code has been sent to ${user.email}.`,
+      mockOtp: env.NODE_ENV === "development" ? rawOtp : undefined,
     };
   }
 }

@@ -233,27 +233,11 @@ export class NotificationOrchestratorService {
 
     if (prefs.emailEnabled && ctx.clientEmail) {
       try {
-        const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <div style="background-color: #0f172a; padding: 15px; border-radius: 6px 6px 0 0; text-align: center;">
-              <h2 style="color: #f59e0b; margin: 0;">SWIFT DOC KENYA</h2>
-            </div>
-            <div style="padding: 20px; background-color: #ffffff;">
-              <h3 style="color: ${isApproved ? "#059669" : "#dc2626"};">${title}</h3>
-              <p>Dear ${ctx.clientName},</p>
-              <p>${message}</p>
-              ${
-                params.reason
-                  ? `<div style="background-color: #fef2f2; padding: 12px; border-left: 4px solid #ef4444; margin: 15px 0;">
-                      <strong>Correction Details:</strong> ${params.reason}
-                    </div>`
-                  : ""
-              }
-              <p>Please log in to your Swift Doc account to take the necessary action.</p>
-            </div>
-          </div>
-        `;
-        await emailService.sendEmail({ to: ctx.clientEmail, subject: title, html: emailHtml, text: message });
+        if (isApproved) {
+          await emailService.sendDocumentApprovedEmail(ctx.clientEmail, ctx.clientName, ctx.applicationNumber, params.reqName);
+        } else {
+          await emailService.sendDocumentRejectedEmail(ctx.clientEmail, ctx.clientName, ctx.applicationNumber, params.reqName, params.reason || "Please review and re-submit.");
+        }
       } catch (err) {
         console.error("Email send failed:", err);
       }
@@ -489,11 +473,14 @@ export class NotificationOrchestratorService {
 
     if (prefs.emailEnabled && ctx.clientEmail) {
       try {
-        await emailService.sendEmail({
-          to: ctx.clientEmail,
-          subject: tmpl.emailSubject,
-          html: `<p>${tmpl.emailBody.replace(/\n/g, "<br/>")}</p>`,
-        });
+        await emailService.sendPaymentReceivedEmail(
+          ctx.clientEmail,
+          ctx.clientName,
+          ctx.applicationNumber,
+          String(params.amount),
+          ref,
+          params.transactionNumber
+        );
       } catch (err) {
         console.error("Email send failed:", err);
       }
@@ -677,22 +664,15 @@ export class NotificationOrchestratorService {
 
     if (prefs.emailEnabled && client.email) {
       try {
-        const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <div style="background-color: #0f172a; padding: 15px; border-radius: 6px 6px 0 0; text-align: center;">
-              <h2 style="color: #f59e0b; margin: 0;">SWIFT DOC INVOICE</h2>
-            </div>
-            <div style="padding: 20px; background-color: #ffffff;">
-              <h3 style="color: #1e293b;">${title}</h3>
-              <p>Dear ${client.fullName},</p>
-              <p>${message}</p>
-              <p style="margin-top: 20px;"><strong>Invoice Number:</strong> ${params.invoiceNumber}</p>
-              <p><strong>Amount:</strong> KES ${params.totalAmount}</p>
-              <p><strong>Service:</strong> ${params.serviceName} (${params.applicationNumber})</p>
-            </div>
-          </div>
-        `;
-        await emailService.sendEmail({ to: client.email, subject: title, html: emailHtml, text: message });
+        await emailService.sendInvoiceIssuedEmail(
+          client.email,
+          client.fullName,
+          params.invoiceNumber,
+          params.applicationNumber,
+          params.serviceName,
+          params.totalAmount,
+          params.dueAt
+        );
       } catch (err) {
         console.error("Email send failed:", err);
       }
@@ -751,19 +731,14 @@ export class NotificationOrchestratorService {
 
     if (prefs.emailEnabled && client.email) {
       try {
-        const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-            <div style="background-color: #0f172a; padding: 15px; border-radius: 6px 6px 0 0; text-align: center;">
-              <h2 style="color: #f59e0b; margin: 0;">SWIFT DOC REFUND NOTICE</h2>
-            </div>
-            <div style="padding: 20px; background-color: #ffffff;">
-              <h3 style="color: #1e293b;">${title}</h3>
-              <p>Dear ${client.fullName},</p>
-              <p>${message}</p>
-            </div>
-          </div>
-        `;
-        await emailService.sendEmail({ to: client.email, subject: title, html: emailHtml, text: message });
+        await emailService.sendRefundCompletedEmail(
+          client.email,
+          client.fullName,
+          params.refundNumber,
+          params.amount,
+          params.invoiceNumber,
+          params.applicationNumber
+        );
       } catch (err) {
         console.error("Email send failed:", err);
       }

@@ -2,6 +2,7 @@ import { Response, NextFunction } from "express";
 import { documentService } from "./documents.service.js";
 import { AuthenticatedRequest } from "../../common/types/index.js";
 import { DocumentStatus } from "@prisma/client";
+import { prisma } from "../../infrastructure/database/prisma.js";
 
 export class DocumentController {
   async listDocuments(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -35,7 +36,32 @@ export class DocumentController {
 
   async uploadDocument(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const clientId = req.user!.role === "CLIENT" ? req.user!.clientId! : (req.body.clientId || req.user!.clientId!);
+      let clientId = req.user!.role === "CLIENT" ? req.user!.clientId! : (req.body.clientId || req.user!.clientId);
+
+      if (!clientId && req.body.applicationId) {
+        const app = await prisma.application.findUnique({
+          where: { id: req.body.applicationId },
+          select: { clientId: true },
+        });
+        if (app?.clientId) clientId = app.clientId;
+      }
+
+      if (!clientId && req.user!.role === "ADMIN") {
+        const firstClient = await prisma.client.findFirst({
+          where: { organizationId: req.user!.organizationId, deletedAt: null },
+          select: { id: true },
+        });
+        if (firstClient) clientId = firstClient.id;
+      }
+
+      if (!clientId) {
+        res.status(400).json({
+          success: false,
+          error: { message: "Client ID is required for document upload." },
+        });
+        return;
+      }
+
       const document = await documentService.uploadDocument(
         {
           organizationId: req.user!.organizationId,

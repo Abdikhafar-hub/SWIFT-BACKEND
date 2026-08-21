@@ -300,9 +300,26 @@ model User {
   role                 UserRole   @default(CLIENT)
   isActive             Boolean    @default(true)
   isEmailVerified      Boolean    @default(false)
+  emailVerifiedAt      DateTime?
+  otpHash              String?
+  otpExpiresAt         DateTime?
+  otpAttempts          Int        @default(0)
+  otpResendAfter       DateTime?
+  onboardingCompleted  Boolean    @default(false)
+  onboardingCompletedAt DateTime?
   lastLoginAt          DateTime?
   failedLoginAttempts  Int        @default(0)
   lockedUntil          DateTime?
+  firstName            String?
+  lastName             String?
+  phone                String?
+  avatarUrl            String?
+  jobTitle             String?
+  department           String?
+  pendingEmail         String?
+  pendingEmailOtpHash  String?
+  pendingEmailOtpExpiresAt DateTime?
+  pendingEmailOtpAttempts  Int        @default(0)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
   deletedAt            DateTime?
@@ -1228,11 +1245,22 @@ model Notification {
 model NotificationPreference {
   id               String   @id @default(uuid())
   userId           String   @unique
-  emailEnabled     Boolean  @default(true)
-  smsEnabled       Boolean  @default(true)
-  inAppEnabled     Boolean  @default(true)
-  marketingEnabled Boolean  @default(false)
-  createdAt        DateTime @default(now())
+  emailEnabled               Boolean  @default(true)
+  smsEnabled                 Boolean  @default(true)
+  inAppEnabled               Boolean  @default(true)
+  marketingEnabled           Boolean  @default(false)
+  emailOperationalAlerts     Boolean  @default(true)
+  emailClientRegistrations   Boolean  @default(true)
+  emailApplicationAlerts     Boolean  @default(true)
+  emailPaymentNotifications  Boolean  @default(true)
+  emailClientActions         Boolean  @default(true)
+  emailSlaAlerts             Boolean  @default(true)
+  emailSecurityNotifications Boolean  @default(true)
+  inAppOperationalAlerts     Boolean  @default(true)
+  inAppAssignments           Boolean  @default(true)
+  inAppClientActions         Boolean  @default(true)
+  inAppSlaAlerts             Boolean  @default(true)
+  createdAt                  DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1245,24 +1273,36 @@ model NotificationPreference {
 // ==========================================
 
 model AuditLog {
-  id             String    @id @default(uuid())
-  organizationId String
-  actorId        String?
-  actorEmail     String?
-  actorRole      UserRole?
-  action         String    // e.g. "USER_LOGIN", "APPLICATION_CREATED", "STATUS_TRANSITION", "ASSIGNMENT", "DELIVERY_DISPATCHED"
-  resource       String    // e.g. "Application", "Client", "Service", "Payment", "GovernmentApplication", "Delivery"
-  resourceId     String?
-  ipAddress      String?
-  userAgent      String?
-  metadata       Json?
-  createdAt      DateTime  @default(now())
+  id              String    @id @default(uuid())
+  organizationId  String
+  actorId         String?
+  actorName       String?
+  actorEmail      String?
+  actorRole       UserRole?
+  action          String    // e.g. "USER_LOGIN", "APPLICATION_CREATED", "DOCUMENT_APPROVED", etc.
+  actionCategory  String?   // e.g. "AUTH", "APPLICATION", "DOCUMENT", "QUALITY_CONTROL", "GOVERNMENT", "FINANCIAL", etc.
+  description     String?   // Human-readable description
+  resource        String    // Alias / legacy field for entityType e.g. "Application"
+  resourceId      String?   // Alias / legacy field for entityId
+  entityType      String?   // e.g. "User", "Client", "Application", "Document", "Invoice", "Payment", "Refund", "Delivery"
+  entityId        String?   // ID of affected entity
+  entityReference String?   // Human reference code e.g. "SD-APP-2026-000124", "admin@swiftdoc.co.ke"
+  previousValue   Json?
+  newValue        Json?
+  status          String?   @default("SUCCESS") // "SUCCESS" | "FAILURE" | "WARNING" | "INFO"
+  ipAddress       String?
+  userAgent       String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, resource, resourceId])
+  @@index([organizationId, createdAt])
   @@index([actorId])
-  @@index([action])
+  @@index([actionCategory])
+  @@index([entityType, entityId])
+  @@index([status])
   @@index([createdAt])
   @@map("audit_logs")
 }

@@ -48,6 +48,23 @@ export class PaymentController {
   }
 
   /**
+   * Client / Admin: Actively query Daraja STK push status by CheckoutRequestID
+   */
+  async queryStkStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const checkoutRequestId = String(req.params.checkoutRequestId || req.body.checkoutRequestId);
+      const result = await paymentService.queryStkPushStatus(checkoutRequestId, req.user!);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Admin: Record manual payment (Cash, Bank, Cheque, Card)
    */
   async recordManualPayment(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
