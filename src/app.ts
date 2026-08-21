@@ -149,6 +149,7 @@ v1Router.use("/admin/messages", adminMessageRoutes);
 v1Router.use("/admin/applications", adminTimelineRoutes);
 v1Router.use("/admin/quality", adminQualityRoutes);
 v1Router.use("/admin/delivery", adminDeliveryRoutes);
+v1Router.use("/admin/deliveries", adminDeliveryRoutes);
 v1Router.use("/admin/payments", adminPaymentRoutes);
 v1Router.use("/admin/financial", adminFinancialRoutes);
 v1Router.use("/admin/invoices", adminInvoicesRoutes);
