@@ -199,12 +199,15 @@ enum TransactionType {
 }
 
 enum RefundStatus {
+  DRAFT
+  PENDING_APPROVAL
   REQUESTED
   APPROVED
   PROCESSING
   COMPLETED
-  FAILED
+  REJECTED
   CANCELLED
+  FAILED
 }
 
 enum AdjustmentType {
@@ -1171,29 +1174,58 @@ model Receipt {
 }
 
 model Refund {
-  id             String             @id @default(uuid())
-  organizationId String
-  clientId       String
-  paymentId      String
-  transactionId  String
-  refundNumber   String             @unique // e.g. SD-RF-2026-000001
-  amount         Decimal            @db.Decimal(12, 2)
-  currency       String             @default("KES")
-  reason         String
-  status         RefundStatus       @default(REQUESTED)
-  requestedById  String
-  approvedById   String?
-  processedAt    DateTime?
-  metadata       Json?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                    String             @id @default(uuid())
+  organizationId        String
+  clientId              String
+  paymentId             String
+  transactionId         String
+  refundNumber          String             @unique // e.g. SD-RF-2026-000001
+  amount                Decimal            @db.Decimal(12, 2)
+  currency              String             @default("KES")
+  reason                String
+  reasonCategory        String?            // "CLIENT_OVERPAYMENT", "DUPLICATE_PAYMENT", "SERVICE_CANCELLATION", "SERVICE_NOT_DELIVERED", "GOVERNMENT_FEE_ADJUSTMENT", "INCORRECT_BILLING", "FAILED_SERVICE_PROCESSING", "GOODWILL_ADJUSTMENT", "OTHER"
+  refundMethod          PaymentMethod      @default(MPESA)
+  status                RefundStatus       @default(PENDING_APPROVAL)
+  
+  // Method specific details
+  recipientPhone        String?
+  bankName              String?
+  accountHolder         String?
+  accountNumber         String?
+  referenceDetails      String?
 
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client         Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  payment        Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  transaction    PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
-  requestedBy    User               @relation("RequestedRefunds", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedBy     User?              @relation("ApprovedRefunds", fields: [approvedById], references: [id], onDelete: SetNull)
+  // Supporting info
+  internalNotes         String?
+  supportingDocumentUrl String?
+  clientExplanation     String?
+
+  // Lifecycle actors & timestamps
+  requestedById         String
+  approvedById          String?
+  approvedAt            DateTime?
+  processingStartedAt   DateTime?
+  processedAt           DateTime?
+  completedById         String?
+  completedAt           DateTime?
+  rejectedById          String?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+  cancelledById         String?
+  cancelledAt           DateTime?
+  failedAt              DateTime?
+  failureReason         String?
+
+  externalReference     String?            // M-Pesa reversal ref or bank reference
+  metadata              Json?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  organization          Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client                Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  payment               Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transaction           PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  requestedBy           User               @relation("RequestedRefunds", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy            User?              @relation("ApprovedRefunds", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([clientId])
@@ -1201,6 +1233,7 @@ model Refund {
   @@index([transactionId])
   @@index([refundNumber])
   @@index([status])
+  @@index([reasonCategory])
   @@map("refunds")
 }
 

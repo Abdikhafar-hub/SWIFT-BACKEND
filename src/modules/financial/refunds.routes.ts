@@ -3,15 +3,23 @@ import { refundsController } from "./refunds.controller.js";
 import { authenticateToken, requireRole } from "../../common/middleware/auth.js";
 import { validateBody, validateQuery } from "../../common/middleware/validate.js";
 import {
-  requestRefundSchema,
+  initiateRefundSchema,
   approveRefundSchema,
+  processRefundSchema,
+  completeRefundSchema,
   rejectRefundSchema,
+  cancelRefundSchema,
   listRefundsQuerySchema,
 } from "./refunds.schema.js";
 import { UserRole } from "@prisma/client";
 
 export const adminRefundRoutes = Router();
 adminRefundRoutes.use(authenticateToken, requireRole([UserRole.ADMIN]));
+
+adminRefundRoutes.get(
+  "/eligible-sources",
+  refundsController.getEligibleFinancialSources.bind(refundsController)
+);
 
 adminRefundRoutes.get(
   "/",
@@ -26,8 +34,8 @@ adminRefundRoutes.get(
 
 adminRefundRoutes.post(
   "/",
-  validateBody(requestRefundSchema),
-  refundsController.requestRefund.bind(refundsController)
+  validateBody(initiateRefundSchema),
+  refundsController.initiateRefund.bind(refundsController)
 );
 
 adminRefundRoutes.post(
@@ -37,10 +45,27 @@ adminRefundRoutes.post(
 );
 
 adminRefundRoutes.post(
+  "/:id/process",
+  validateBody(processRefundSchema),
+  refundsController.processRefund.bind(refundsController)
+);
+
+adminRefundRoutes.post(
+  "/:id/complete",
+  validateBody(completeRefundSchema),
+  refundsController.completeRefund.bind(refundsController)
+);
+
+adminRefundRoutes.post(
   "/:id/reject",
   validateBody(rejectRefundSchema),
   refundsController.rejectRefund.bind(refundsController)
 );
 
-export default adminRefundRoutes;
+adminRefundRoutes.post(
+  "/:id/cancel",
+  validateBody(cancelRefundSchema),
+  refundsController.cancelRefund.bind(refundsController)
+);
 
+export default adminRefundRoutes;
