@@ -167,9 +167,17 @@ enum PaymentStatus {
   DRAFT
   ISSUED
   PARTIALLY_PAID
+  PAYMENT_UNDER_REVIEW
   PAID
   OVERDUE
   VOID
+}
+
+enum PaymentProofStatus {
+  PENDING_REVIEW
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
 }
 
 enum InvoiceLineItemCategory {
@@ -280,6 +288,7 @@ model Organization {
   backgroundJobs        BackgroundJob[]
   invoiceLineItems      InvoiceLineItem[]
   paymentAllocations    PaymentAllocation[]
+  paymentProofSubmissions PaymentProofSubmission[]
   receipts              Receipt[]
   refunds               Refund[]
   financialAdjustments  FinancialAdjustment[]
@@ -347,6 +356,7 @@ model User {
   createdAdjustments     FinancialAdjustment[]   @relation("CreatedAdjustments")
   reconciledRecords      ReconciliationRecord[]  @relation("ReconciledRecords")
   reviewedClients        Client[]                @relation("ClientReviewer")
+  reviewedPaymentProofs  PaymentProofSubmission[] @relation("PaymentProofReviewer")
 
   @@index([organizationId, role])
   @@index([email])
@@ -422,6 +432,7 @@ model Client {
   notifications                Notification[]
   receipts                     Receipt[]
   refunds                      Refund[]
+  paymentProofSubmissions      PaymentProofSubmission[]
 
   @@index([organizationId, clientNumber])
   @@index([organizationId, isReviewed])
@@ -573,6 +584,7 @@ model Application {
   clientActions       ClientAction[]
   slaEvents           ApplicationSlaEvent[]
   receipts            Receipt[]
+  paymentProofSubmissions PaymentProofSubmission[]
 
   @@index([organizationId, status])
   @@index([clientId, status])
@@ -995,6 +1007,7 @@ model Payment {
   receipts       Receipt[]
   refunds        Refund[]
   adjustments    FinancialAdjustment[]
+  proofSubmissions PaymentProofSubmission[]
 
   @@index([organizationId, status])
   @@index([organizationId, isOverdue])
@@ -1003,6 +1016,40 @@ model Payment {
   @@index([dueAt])
   @@index([issuedAt])
   @@map("payments")
+}
+
+model PaymentProofSubmission {
+  id              String             @id @default(uuid())
+  organizationId  String
+  paymentId       String
+  clientId        String
+  applicationId   String?
+  paymentMethod   PaymentMethod      @default(BANK)
+  claimedAmount   Decimal            @db.Decimal(12, 2)
+  paymentDate     DateTime           @default(now())
+  referenceNumber String?
+  notes           String?
+  proofFileKey    String?
+  proofFileName   String
+  proofFileSize   Int
+  proofMimeType   String
+  status          PaymentProofStatus @default(PENDING_REVIEW)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment         Payment            @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  client          Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  application     Application?       @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  reviewedBy      User?              @relation("PaymentProofReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([paymentId])
+  @@index([clientId])
+  @@map("payment_proof_submissions")
 }
 
 model PaymentTransaction {

@@ -465,7 +465,10 @@ export class InvoicesService {
 
     const invoiceNumber = await generateInvoiceNumber(user.organizationId);
     const initialStatus = input.status || PaymentStatus.ISSUED;
-    const dueAt = input.dueAt ? new Date(input.dueAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const parsedDueAt = input.dueAt ? new Date(input.dueAt) : null;
+    const dueAt = parsedDueAt && !isNaN(parsedDueAt.getTime())
+      ? parsedDueAt
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const invoice = await prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
@@ -766,6 +769,56 @@ export class InvoicesService {
     }
 
     return updated;
+  }
+
+  /**
+   * Resend / Send invoice notification to client via in-app & email
+   */
+  async sendInvoiceNotification(id: string, organizationId: string, userId: string) {
+    const existing = await prisma.payment.findFirst({
+      where: { id, organizationId, deletedAt: null },
+      include: {
+        client: true,
+        application: {
+          include: { service: true },
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundError("Invoice not found");
+    }
+
+    if (existing.status === PaymentStatus.DRAFT) {
+      return this.issueInvoice(id, organizationId, undefined, userId);
+    }
+
+    if (existing.application) {
+      await notificationOrchestrator.notifyInvoiceIssued({
+        organizationId,
+        clientId: existing.clientId,
+        invoiceId: existing.id,
+        invoiceNumber: existing.invoiceNumber,
+        totalAmount: existing.totalAmount.toString(),
+        dueAt: (existing.dueAt || new Date()).toISOString(),
+        applicationNumber: existing.application.applicationNumber,
+        serviceName: existing.application.service.name,
+      });
+    }
+
+    await recordAuditLog({
+      organizationId,
+      actorId: userId,
+      actorRole: UserRole.ADMIN,
+      action: "RESEND_INVOICE_NOTIFICATION",
+      resource: "Payment",
+      resourceId: id,
+      metadata: {
+        invoiceNumber: existing.invoiceNumber,
+      },
+    });
+
+    return existing;
   }
 
   /**

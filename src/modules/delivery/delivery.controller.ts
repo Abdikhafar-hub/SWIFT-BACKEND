@@ -32,11 +32,17 @@ export class DeliveryController {
   // Admin: Lodge new delivery
   async lodgeDelivery(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
+      const targetAppId = req.params.applicationId || req.params.id;
+      const payload = { ...req.body };
+      if (targetAppId && !payload.applicationId) {
+        payload.applicationId = targetAppId;
+      }
+
       const delivery = await deliveryService.lodgeDelivery(
         req.user!.organizationId,
         req.user!.id,
         req.user!.email,
-        req.body
+        payload
       );
 
       res.status(201).json({

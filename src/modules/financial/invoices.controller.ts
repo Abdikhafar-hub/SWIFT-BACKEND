@@ -162,6 +162,23 @@ export class InvoicesController {
   }
 
   /**
+   * Admin: Resend/Send invoice notification to client
+   */
+  async resendNotification(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await invoicesService.sendInvoiceNotification(
+        String(req.params.id),
+        req.user!.organizationId,
+        req.user!.id
+      );
+
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Admin: Cancel invoice
    */
   async cancelInvoice(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {

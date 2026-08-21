@@ -91,6 +91,16 @@ adminInvoicesRoutes.post(
 );
 
 adminInvoicesRoutes.post(
+  "/:id/send",
+  invoicesController.resendNotification.bind(invoicesController)
+);
+
+adminInvoicesRoutes.post(
+  "/:id/resend",
+  invoicesController.resendNotification.bind(invoicesController)
+);
+
+adminInvoicesRoutes.post(
   "/:id/cancel",
   validateBody(cancelInvoiceSchema),
   invoicesController.cancelInvoice.bind(invoicesController)
