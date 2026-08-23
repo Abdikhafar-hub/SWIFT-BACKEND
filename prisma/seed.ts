@@ -2980,6 +2980,133 @@ async function main() {
     });
 
     console.log(`💳 Seeded Phase 4 Financial Ledger: Multi-state Invoices, Transactions, Receipts, and Reconciliation records.`);
+
+    // 5.7 Seed Client Actions for Action Center (/admin/actions)
+    const seededApps = await prisma.application.findMany({
+      where: { organizationId: organization.id },
+      take: 6,
+    });
+
+    if (seededApps.length > 0) {
+      const clientActionSeedData = [
+        {
+          id: "seed-action-01",
+          title: "Certified KRA PIN Certificate Replacement Required",
+          description: "The provided KRA PIN certificate copy is blurry and missing statutory watermark. Please upload a clear color PDF scan.",
+          type: "UPLOAD_DOCUMENT",
+          priority: "URGENT",
+          status: "OPEN",
+          dueAt: new Date(Date.now() + 86400000 * 2),
+        },
+        {
+          id: "seed-action-02",
+          title: "Confirm Directors National ID / Passport Numbers",
+          description: "Discrepancy detected between CR12 application details and BRS registry database. Please confirm the national identity numbers.",
+          type: "PROVIDE_INFORMATION",
+          priority: "HIGH",
+          status: "OPEN",
+          dueAt: new Date(Date.now() + 86400000 * 3),
+        },
+        {
+          id: "seed-action-03",
+          title: "Sign Form CR1 Company Registration Statutory Declaration",
+          description: "Digital signature or scanned physical signature required on Form CR1 before submission to Business Registration Service (BRS).",
+          type: "SIGN_DECLARATION",
+          priority: "URGENT",
+          status: "OPEN",
+          dueAt: new Date(Date.now() + 86400000 * 1),
+        },
+        {
+          id: "seed-action-04",
+          title: "Upload Original Police Clearance Certificate (Good Conduct)",
+          description: "Original Good Conduct certificate required for Embassy legalization workflow.",
+          type: "REPLACE_DOCUMENT",
+          priority: "NORMAL",
+          status: "OPEN",
+          dueAt: new Date(Date.now() + 86400000 * 5),
+        },
+        {
+          id: "seed-action-05",
+          title: "Approve Registered Business Address Declaration",
+          description: "Please review and approve the physical office address and plot number details for eCitizen submission.",
+          type: "APPROVE_DECLARATION",
+          priority: "NORMAL",
+          status: "COMPLETED",
+          completedAt: new Date(),
+        },
+        {
+          id: "seed-action-06",
+          title: "Provide Passport Bio-Data Page for Visa Processing",
+          description: "Passport bio-data page scan uploaded has less than 6 months validity. Please provide renewed passport details.",
+          type: "PROVIDE_INFORMATION",
+          priority: "HIGH",
+          status: "COMPLETED",
+          completedAt: new Date(),
+        },
+      ];
+
+      for (let i = 0; i < clientActionSeedData.length; i++) {
+        const act = clientActionSeedData[i];
+        const targetApp = seededApps[i % seededApps.length];
+        await prisma.clientAction.upsert({
+          where: { id: act.id },
+          update: {
+            status: act.status as any,
+          },
+          create: {
+            id: act.id,
+            organizationId: organization.id,
+            applicationId: targetApp.id,
+            type: act.type as any,
+            title: act.title,
+            description: act.description,
+            priority: act.priority as any,
+            status: act.status as any,
+            dueAt: act.dueAt,
+            completedAt: act.completedAt,
+            createdById: adminUser.id,
+          },
+        });
+      }
+      console.log(`📋 Seeded Client Action Center: ${clientActionSeedData.length} Action Directives (Open, Urgent, Document, Resolved)`);
+
+      // 5.8 Seed Government Registry Operations (/admin/government)
+      const govPlatforms = [
+        { platform: "BRS", agency: "Business Registration Service", ext: "BRS-2026-9901", status: "UNDER_PROCESSING" },
+        { platform: "eCitizen", agency: "Directorate of Immigration", ext: "IMM-KE-8812", status: "SUBMITTED" },
+        { platform: "iTax", agency: "Kenya Revenue Authority (KRA)", ext: "KRA-TCC-7721", status: "APPROVED" },
+        { platform: "TIMS", agency: "National Transport and Safety Authority", ext: "NTSA-LOG-4410", status: "SUBMITTED" },
+        { platform: "DCI", agency: "Directorate of Criminal Investigations", ext: "PCC-DCI-3319", status: "ADDITIONAL_INFORMATION_REQUIRED" },
+      ];
+
+      for (let i = 0; i < govPlatforms.length; i++) {
+        const item = govPlatforms[i];
+        const targetApp = seededApps[i % seededApps.length];
+        await prisma.governmentApplication.upsert({
+          where: { id: `seed-gov-app-${i}` },
+          update: {
+            status: item.status as any,
+          },
+          create: {
+            id: `seed-gov-app-${i}`,
+            applicationId: targetApp.id,
+            platform: item.platform,
+            governmentAgency: item.agency,
+            submissionChannel: "ONLINE_PORTAL",
+            externalReference: item.ext,
+            trackingNumber: `TRK-${item.ext}`,
+            status: item.status as any,
+            submittedAt: new Date(Date.now() - 86400000 * 3),
+            submittedByAdminId: adminUser.id,
+            primaryOfficerId: adminUser.id,
+            expectedTurnaroundDays: 5,
+            expectedResponseDate: new Date(Date.now() + 86400000 * 2),
+            notes: `Seeded government registry submission for ${item.agency}`,
+          },
+        });
+      }
+      console.log(`🏛️ Seeded Government Registry Operations: ${govPlatforms.length} Registry Filings`);
+    }
   }
 
   console.log("✨ Database seed completed successfully!");
