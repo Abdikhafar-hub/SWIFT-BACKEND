@@ -2923,6 +2923,9 @@ async function main() {
     }
 
     // 5.3 Partially Paid Application with Bank Payment
+    let inv3: any = null;
+    let tx3: any = null;
+
     if (etaService) {
       const app3 = await prisma.application.upsert({
         where: { applicationNumber: "SD-APP-2026-000003" },
@@ -2940,7 +2943,7 @@ async function main() {
         },
       });
 
-      const inv3 = await prisma.payment.upsert({
+      inv3 = await prisma.payment.upsert({
         where: { invoiceNumber: "SD-INV-2026-000003" },
         update: {},
         create: {
@@ -2989,7 +2992,7 @@ async function main() {
         },
       });
 
-      const tx3 = await prisma.paymentTransaction.upsert({
+      tx3 = await prisma.paymentTransaction.upsert({
         where: { transactionNumber: "SD-TX-2026-000002" },
         update: {},
         create: {
@@ -3150,6 +3153,147 @@ async function main() {
     });
 
     console.log(`💳 Seeded Phase 4 Financial Ledger: Multi-state Invoices, Transactions, Receipts, and Reconciliation records.`);
+
+    // 5.6 Seed Refund Claims & Financial Reversals (/admin/refunds)
+    const refundSeedData = [
+      {
+        id: "seed-refund-01",
+        refundNumber: "SD-RF-2026-000001",
+        paymentId: inv1.id,
+        transactionId: tx1.id,
+        clientId: clientProfile.id,
+        amount: 2150.0,
+        currency: "KES",
+        reasonCategory: "CLIENT_OVERPAYMENT",
+        reason: "Client inadvertently paid twice for CR12 search via M-Pesa.",
+        refundMethod: "MPESA" as any,
+        status: "PENDING_APPROVAL" as any,
+        recipientPhone: "+254712345678",
+        requestedById: adminUser.id,
+        internalNotes: "M-Pesa reference QKH88AA11B verified in ledger.",
+      },
+      {
+        id: "seed-refund-02",
+        refundNumber: "SD-RF-2026-000002",
+        paymentId: inv3?.id || inv1.id,
+        transactionId: tx3?.id || tx1.id,
+        clientId: clientProfile.id,
+        amount: 4500.0,
+        currency: "KES",
+        reasonCategory: "GOVERNMENT_FEE_ADJUSTMENT",
+        reason: "eCitizen government fee waiver applied post-payment.",
+        refundMethod: "BANK" as any,
+        status: "PROCESSING" as any,
+        bankName: "KCB Bank Kenya",
+        accountHolder: "Apex Tech Solutions Ltd",
+        accountNumber: "1209887766",
+        requestedById: adminUser.id,
+        approvedById: adminUser.id,
+        approvedAt: new Date(Date.now() - 86400000 * 2),
+        processingStartedAt: new Date(Date.now() - 86400000 * 1),
+        internalNotes: "Bank batch transfer initiated via KCB iBank.",
+      },
+      {
+        id: "seed-refund-03",
+        refundNumber: "SD-RF-2026-000003",
+        paymentId: inv1.id,
+        transactionId: tx1.id,
+        clientId: clientProfile.id,
+        amount: 1500.0,
+        currency: "KES",
+        reasonCategory: "SERVICE_CANCELLATION",
+        reason: "Application cancelled by applicant prior to government processing.",
+        refundMethod: "MPESA" as any,
+        status: "COMPLETED" as any,
+        recipientPhone: "+254722998877",
+        requestedById: adminUser.id,
+        approvedById: adminUser.id,
+        approvedAt: new Date(Date.now() - 86400000 * 5),
+        processedAt: new Date(Date.now() - 86400000 * 3),
+        completedById: adminUser.id,
+        completedAt: new Date(Date.now() - 86400000 * 3),
+        externalReference: "QKH99ZZ77M",
+        internalNotes: "M-Pesa B2C reversal successfully settled.",
+      },
+      {
+        id: "seed-refund-04",
+        refundNumber: "SD-RF-2026-000004",
+        paymentId: inv3?.id || inv1.id,
+        transactionId: tx3?.id || tx1.id,
+        clientId: clientProfile.id,
+        amount: 3500.0,
+        currency: "KES",
+        reasonCategory: "INCORRECT_BILLING",
+        reason: "Duplicate charge on tax compliance certificate filing.",
+        refundMethod: "MPESA" as any,
+        status: "APPROVED" as any,
+        recipientPhone: "+254720991122",
+        requestedById: adminUser.id,
+        approvedById: adminUser.id,
+        approvedAt: new Date(Date.now() - 3600000 * 4),
+        internalNotes: "Approved for M-Pesa disbursement.",
+      },
+      {
+        id: "seed-refund-05",
+        refundNumber: "SD-RF-2026-000005",
+        paymentId: inv1.id,
+        transactionId: tx1.id,
+        clientId: clientProfile.id,
+        amount: 5000.0,
+        currency: "KES",
+        reasonCategory: "FAILED_SERVICE_PROCESSING",
+        reason: "Government portal rejection requiring full refund.",
+        refundMethod: "BANK" as any,
+        status: "REJECTED" as any,
+        bankName: "Equity Bank Kenya",
+        accountHolder: "Hassan Mohammed Farah",
+        accountNumber: "011099887766",
+        requestedById: adminUser.id,
+        rejectedById: adminUser.id,
+        rejectedAt: new Date(Date.now() - 86400000 * 4),
+        rejectionReason: "Non-refundable government statutory fee policy per Terms of Service.",
+      },
+    ];
+
+    for (const rData of refundSeedData) {
+      await prisma.refund.upsert({
+        where: { refundNumber: rData.refundNumber },
+        update: {
+          status: rData.status,
+        },
+        create: {
+          id: rData.id,
+          organizationId: organization.id,
+          clientId: rData.clientId,
+          paymentId: rData.paymentId,
+          transactionId: rData.transactionId,
+          refundNumber: rData.refundNumber,
+          amount: rData.amount,
+          currency: rData.currency,
+          reasonCategory: rData.reasonCategory,
+          reason: rData.reason,
+          refundMethod: rData.refundMethod,
+          status: rData.status,
+          recipientPhone: rData.recipientPhone || null,
+          bankName: rData.bankName || null,
+          accountHolder: rData.accountHolder || null,
+          accountNumber: rData.accountNumber || null,
+          internalNotes: rData.internalNotes || null,
+          requestedById: rData.requestedById,
+          approvedById: rData.approvedById || null,
+          approvedAt: rData.approvedAt || null,
+          processingStartedAt: rData.processingStartedAt || null,
+          processedAt: rData.processedAt || null,
+          completedById: rData.completedById || null,
+          completedAt: rData.completedAt || null,
+          rejectedById: rData.rejectedById || null,
+          rejectedAt: rData.rejectedAt || null,
+          rejectionReason: rData.rejectionReason || null,
+          externalReference: rData.externalReference || null,
+        },
+      });
+    }
+    console.log(`🔄 Seeded Refund Claims: ${refundSeedData.length} Reversals (Pending Approval, Approved, Processing, Completed, Rejected)`);
 
     // 5.7 Seed Client Actions for Action Center (/admin/actions)
     const seededApps = await prisma.application.findMany({
