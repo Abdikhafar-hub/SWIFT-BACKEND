@@ -8,7 +8,7 @@ export async function runGovernmentMonitorJob(payload?: { organizationId?: strin
       deletedAt: null,
     },
     status: {
-      notIn: [GovernmentStatus.APPROVED, GovernmentStatus.COMPLETED, GovernmentStatus.CANCELLED],
+      notIn: [GovernmentStatus.APPROVED, GovernmentStatus.COLLECTED, GovernmentStatus.CLOSED, GovernmentStatus.REJECTED, GovernmentStatus.WITHDRAWN, GovernmentStatus.CANCELLED],
     },
     OR: [
       { nextFollowUpDate: { lte: now } },

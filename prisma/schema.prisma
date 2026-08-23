@@ -87,17 +87,94 @@ enum GovernmentStatus {
   NOT_STARTED
   PREPARING
   READY_TO_SUBMIT
+  SUBMISSION_IN_PROGRESS
   SUBMITTED
-  UNDER_PROCESSING
-  ACTION_REQUIRED
-  ADDITIONAL_INFORMATION_REQUIRED
   ACKNOWLEDGED
-  RESUBMITTED
+  PAYMENT_REQUIRED
+  PAYMENT_PENDING
+  UNDER_PROCESSING
+  QUERY_RAISED
+  ADDITIONAL_INFORMATION_REQUIRED
+  CORRECTION_REQUIRED
+  APPOINTMENT_REQUIRED
+  INTERVIEW_REQUIRED
+  BIOMETRICS_REQUIRED
+  ON_HOLD
   APPROVED
   REJECTED
-  COMPLETED
+  CERTIFICATE_READY
+  READY_FOR_COLLECTION
+  COLLECTED
+  CLOSED
+  WITHDRAWN
   CANCELLED
   UNKNOWN
+}
+
+enum GovernmentSubmissionChannel {
+  ONLINE_PORTAL
+  PHYSICAL_OFFICE
+  EMAIL
+  COURIER
+  MANUAL_COUNTER
+  THIRD_PARTY
+}
+
+enum GovernmentQueryType {
+  MISSING_DOCUMENT
+  INCORRECT_INFORMATION
+  PAYMENT_ISSUE
+  IDENTITY_VERIFICATION
+  ADDITIONAL_INFORMATION
+  CORRECTION_REQUIRED
+  APPOINTMENT_REQUIRED
+  TECHNICAL_PORTAL_ISSUE
+  OTHER
+}
+
+enum GovernmentQuerySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum GovernmentPaymentStatus {
+  NOT_REQUIRED
+  REQUIRED
+  AWAITING_PAYMENT
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum GovernmentAppointmentType {
+  BIOMETRICS
+  PASSPORT_COLLECTION
+  VISA_INTERVIEW
+  GOVERNMENT_OFFICE_VISIT
+  DOCUMENT_COLLECTION
+  IDENTITY_VERIFICATION
+  OTHER
+}
+
+enum GovernmentAppointmentStatus {
+  SCHEDULED
+  ATTENDED
+  MISSED
+  RESCHEDULED
+  CANCELLED
+}
+
+enum GovernmentFollowUpMethod {
+  PORTAL
+  EMAIL
+  PHONE_CALL
+  PHYSICAL_VISIT
+  SMS
+  OFFICIAL_LETTER
+  CLIENT_COMMUNICATION
+  OTHER
 }
 
 enum ClientActionType {
@@ -349,6 +426,16 @@ model User {
   reviewedDocVersions    DocumentVersion[]       @relation("ReviewedBy")
   reviewedRequirements   ApplicationRequirement[] @relation("ReviewedRequirements")
   submittedGovApps       GovernmentApplication[] @relation("SubmittedGovApps")
+  primaryGovApps         GovernmentApplication[] @relation("PrimaryGovOfficer")
+  secondaryGovApps       GovernmentApplication[] @relation("SecondaryGovOfficer")
+  supervisedGovApps      GovernmentApplication[] @relation("GovSupervisor")
+  ownedGovFollowUps      GovernmentApplication[] @relation("GovFollowUpOwner")
+  resolvedGovQueries     GovernmentQuery[]       @relation("ResolvedGovQueries")
+  createdGovQueries      GovernmentQuery[]       @relation("CreatedGovQueries")
+  createdGovAppointments GovernmentAppointment[] @relation("CreatedGovAppointments")
+  paidGovPayments        GovernmentPayment[]     @relation("PaidGovPayments")
+  uploadedGovEvidence    GovernmentEvidence[]    @relation("UploadedGovEvidence")
+  performedGovFollowUps  GovernmentFollowUp[]    @relation("PerformedGovFollowUps")
   sentMessages           ApplicationMessage[]    @relation("SentMessages")
   performedQCs           QualityCheck[]          @relation("PerformedQCs")
   dispatchedDeliveries   ApplicationDelivery[]   @relation("DispatchedDeliveries")
@@ -719,45 +806,74 @@ model ApplicationNote {
 }
 
 model GovernmentApplication {
-  id                               String                    @id @default(uuid())
+  id                               String                      @id @default(uuid())
   applicationId                    String
-  platform                         String                    // e.g. "eCitizen", "BRS", "iTax", "TIMS", "Immigration", "DCI", "MFA"
-  governmentAgency                 String                    @default("eCitizen")
+  platform                         String                      // e.g. "eCitizen", "BRS", "iTax", "TIMS", "Immigration", "DCI", "MFA"
+  governmentAgency                 String                      @default("eCitizen")
   governmentService                String?
-  externalReference                String?                   // Primary tracking reference e.g. BRS-2026-0001
-  trackingNumber                   String?                   // Supplemental tracking number / docket number
+  department                       String?
+  submissionChannel                GovernmentSubmissionChannel @default(ONLINE_PORTAL)
+  externalReference                String?                     // Primary tracking reference e.g. BRS-2026-0001
+  trackingNumber                   String?                     // Supplemental tracking number / docket number
+  receiptNumber                    String?
+  officerContact                   String?
+  portalUrl                        String?
   submittedAt                      DateTime?
   submittedByAdminId               String?
-  status                           GovernmentStatus          @default(NOT_STARTED)
+  primaryOfficerId                 String?
+  secondaryOfficerId               String?
+  supervisorId                     String?
+  team                             String?
+  status                           GovernmentStatus            @default(NOT_STARTED)
   statusDescription                String?
   lastCheckedAt                    DateTime?
+  expectedTurnaroundDays           Int?
+  expectedResponseDate             DateTime?
   nextFollowUpDate                 DateTime?
+  followUpFrequencyDays            Int                         @default(7)
+  lastFollowUpDate                 DateTime?
+  followUpOwnerId                  String?
   expectedCompletionAt             DateTime?
   approvalDate                     DateTime?
   completionDate                   DateTime?
   completedAt                      DateTime?
   rejectionReason                  String?
   rejectedAt                       DateTime?
-  additionalInformationRequired    Boolean                   @default(false)
+  additionalInformationRequired    Boolean                     @default(false)
   additionalInformationRequestedAt DateTime?
   additionalInformationDeadline    DateTime?
-  portalUrl                        String?
+  statutoryPaymentStatus           GovernmentPaymentStatus     @default(NOT_REQUIRED)
+  statutoryFeeAmount               Decimal                     @default(0.00) @db.Decimal(12, 2)
+  isSlaPaused                      Boolean                     @default(false)
+  slaPauseReason                   String?
   evidenceDocumentUrl              String?
   notes                            String?
   metadata                         Json?
-  createdAt                        DateTime                  @default(now())
-  updatedAt                        DateTime                  @updatedAt
+  createdAt                        DateTime                    @default(now())
+  updatedAt                        DateTime                    @updatedAt
 
-  application                      Application               @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  submittedByAdmin                 User?                     @relation("SubmittedGovApps", fields: [submittedByAdminId], references: [id], onDelete: SetNull)
+  application                      Application                 @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  submittedByAdmin                 User?                       @relation("SubmittedGovApps", fields: [submittedByAdminId], references: [id], onDelete: SetNull)
+  primaryOfficer                   User?                       @relation("PrimaryGovOfficer", fields: [primaryOfficerId], references: [id], onDelete: SetNull)
+  secondaryOfficer                 User?                       @relation("SecondaryGovOfficer", fields: [secondaryOfficerId], references: [id], onDelete: SetNull)
+  supervisor                       User?                       @relation("GovSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  followUpOwner                    User?                       @relation("GovFollowUpOwner", fields: [followUpOwnerId], references: [id], onDelete: SetNull)
+
   statusHistory                    GovernmentStatusHistory[]
   references                       GovernmentReference[]
+  queries                          GovernmentQuery[]
+  appointments                     GovernmentAppointment[]
+  payments                         GovernmentPayment[]
+  evidenceDocs                     GovernmentEvidence[]
+  followUps                        GovernmentFollowUp[]
 
   @@index([applicationId])
   @@index([externalReference])
   @@index([trackingNumber])
   @@index([status])
   @@index([nextFollowUpDate])
+  @@index([primaryOfficerId])
+  @@index([statutoryPaymentStatus])
   @@map("government_applications")
 }
 
@@ -795,6 +911,126 @@ model GovernmentStatusHistory {
   @@index([governmentApplicationId])
   @@index([createdAt])
   @@map("government_status_histories")
+}
+
+model GovernmentQuery {
+  id                      String                  @id @default(uuid())
+  governmentApplicationId String
+  queryType               GovernmentQueryType     @default(OTHER)
+  severity                GovernmentQuerySeverity @default(MEDIUM)
+  referenceNumber         String?
+  receivedAt              DateTime                @default(now())
+  responseDeadline        DateTime?
+  description             String
+  internalNotes           String?
+  clientActionId          String?
+  isResolved              Boolean                 @default(false)
+  resolvedAt              DateTime?
+  resolvedById            String?
+  resolutionNotes         String?
+  createdById             String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  governmentApplication   GovernmentApplication   @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+  clientAction            ClientAction?           @relation(fields: [clientActionId], references: [id], onDelete: SetNull)
+  resolvedBy              User?                   @relation("ResolvedGovQueries", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdBy               User?                   @relation("CreatedGovQueries", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([governmentApplicationId])
+  @@index([clientActionId])
+  @@index([isResolved])
+  @@map("government_queries")
+}
+
+model GovernmentAppointment {
+  id                      String                      @id @default(uuid())
+  governmentApplicationId String
+  appointmentType         GovernmentAppointmentType   @default(GOVERNMENT_OFFICE_VISIT)
+  authorityName           String
+  scheduledAt             DateTime
+  location                String?
+  referenceNumber         String?
+  officerContact          String?
+  status                  GovernmentAppointmentStatus @default(SCHEDULED)
+  clientInstructions      String?
+  requiredDocuments       Json?
+  isClientVisible         Boolean                     @default(true)
+  reminderSent            Boolean                     @default(false)
+  createdById             String?
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+
+  governmentApplication   GovernmentApplication       @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+  createdBy               User?                       @relation("CreatedGovAppointments", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([governmentApplicationId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("government_appointments")
+}
+
+model GovernmentPayment {
+  id                      String                  @id @default(uuid())
+  governmentApplicationId String
+  amount                  Decimal                 @default(0.00) @db.Decimal(12, 2)
+  currency                String                  @default("KES")
+  paymentMethod           PaymentMethod           @default(MPESA)
+  paymentReference        String?
+  paymentDate             DateTime                @default(now())
+  receiptNumber           String?
+  paidById                String?
+  receiptDocumentUrl      String?
+  status                  GovernmentPaymentStatus @default(PAID)
+  notes                   String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  governmentApplication   GovernmentApplication   @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+  paidBy                  User?                   @relation("PaidGovPayments", fields: [paidById], references: [id], onDelete: SetNull)
+
+  @@index([governmentApplicationId])
+  @@index([paymentReference])
+  @@map("government_payments")
+}
+
+model GovernmentEvidence {
+  id                      String                @id @default(uuid())
+  governmentApplicationId String
+  documentName            String
+  documentType            String                // e.g. "ACKNOWLEDGEMENT", "PAYMENT_RECEIPT", "SCREENSHOT", "QUERY_LETTER", "APPROVAL_LETTER", "CERTIFICATE"
+  fileUrl                 String
+  uploadedById            String?
+  uploadedAt              DateTime              @default(now())
+  visibility              NoteVisibility        @default(CLIENT_VISIBLE)
+  createdAt               DateTime              @default(now())
+
+  governmentApplication   GovernmentApplication @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+  uploadedBy              User?                 @relation("UploadedGovEvidence", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([governmentApplicationId])
+  @@map("government_evidence")
+}
+
+model GovernmentFollowUp {
+  id                      String                   @id @default(uuid())
+  governmentApplicationId String
+  attemptedAt             DateTime                 @default(now())
+  method                  GovernmentFollowUpMethod @default(PHONE_CALL)
+  contactPerson           String?
+  officeContacted         String?
+  outcome                 String?
+  notes                   String?
+  nextFollowUpDate        DateTime?
+  performedById           String?
+  createdAt               DateTime                 @default(now())
+
+  governmentApplication   GovernmentApplication    @relation(fields: [governmentApplicationId], references: [id], onDelete: Cascade)
+  performedBy             User?                    @relation("PerformedGovFollowUps", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([governmentApplicationId])
+  @@index([attemptedAt])
+  @@map("government_follow_ups")
 }
 
 // ==========================================
@@ -1465,6 +1701,7 @@ model ClientAction {
   requirement     ApplicationRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   createdBy       User?               @relation("CreatedClientActions", fields: [createdById], references: [id], onDelete: SetNull)
   completedBy     User?               @relation("CompletedClientActions", fields: [completedById], references: [id], onDelete: SetNull)
+  governmentQueries GovernmentQuery[]
 
   @@index([organizationId, status])
   @@index([applicationId, status])

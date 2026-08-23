@@ -6,17 +6,19 @@ import {
   createGovernmentRecordSchema,
   updateGovernmentStatusSchema,
   scheduleGovernmentFollowUpSchema,
+  recordGovernmentFollowUpSchema,
+  recordGovernmentQuerySchema,
+  recordGovernmentPaymentSchema,
+  scheduleGovernmentAppointmentSchema,
+  recordExternalUpdateSchema,
+  uploadGovernmentEvidenceSchema,
+  assignGovernmentCaseSchema,
   addGovernmentReferenceSchema,
-  requestAdditionalInfoSchema,
-  resubmitGovernmentSchema,
-  recordGovernmentApprovalSchema,
   governmentQueueQuerySchema,
 } from "./government.schema.js";
 import { UserRole } from "@prisma/client";
 
-// General Router (absolute paths under /api/v1)
 const router = Router();
-
 const roleMiddleware = requireRole(UserRole.ADMIN);
 
 // CLIENT ROUTES
@@ -27,9 +29,24 @@ router.get(
   governmentController.getClientTracking
 );
 
-// ADMIN ROUTES
+// ADMIN METRICS & READINESS
 router.get(
-  ["/admin/government-applications/queue", "/admin/government/queue"],
+  ["/admin/government/kpis", "/admin/government-kpis"],
+  authenticateToken,
+  roleMiddleware,
+  governmentController.getDashboardKpis
+);
+
+router.get(
+  ["/admin/government/ready-applications", "/admin/government-ready-apps"],
+  authenticateToken,
+  roleMiddleware,
+  governmentController.getReadyApplications
+);
+
+// ADMIN WORK QUEUE & SUBMISSIONS
+router.get(
+  ["/admin/government-applications/queue", "/admin/government/queue", "/admin/government/submissions"],
   authenticateToken,
   roleMiddleware,
   validateQuery(governmentQueueQuerySchema),
@@ -37,15 +54,31 @@ router.get(
 );
 
 router.post(
+  ["/admin/government/submissions", "/admin/government-applications/submissions"],
+  authenticateToken,
+  roleMiddleware,
+  validateBody(createGovernmentRecordSchema),
+  governmentController.createSubmission
+);
+
+router.post(
   ["/admin/applications/:id/government", "/admin/government/applications/:id"],
   authenticateToken,
   roleMiddleware,
   validateBody(createGovernmentRecordSchema),
-  governmentController.createRecord
+  governmentController.createSubmission
+);
+
+// DOSSIER & ACTIONS
+router.get(
+  ["/admin/government/submissions/:id", "/admin/government/:id"],
+  authenticateToken,
+  roleMiddleware,
+  governmentController.getDossier
 );
 
 router.patch(
-  ["/admin/government-applications/:id/status", "/admin/government/:id/status"],
+  ["/admin/government-applications/:id/status", "/admin/government/:id/status", "/admin/government/submissions/:id/status"],
   authenticateToken,
   roleMiddleware,
   validateBody(updateGovernmentStatusSchema),
@@ -53,27 +86,59 @@ router.patch(
 );
 
 router.post(
-  ["/admin/government-applications/:id/request-info", "/admin/government/:id/request-info"],
+  ["/admin/government/submissions/:id/query", "/admin/government/:id/query"],
   authenticateToken,
   roleMiddleware,
-  validateBody(requestAdditionalInfoSchema),
-  governmentController.requestAdditionalInfo
+  validateBody(recordGovernmentQuerySchema),
+  governmentController.recordQuery
 );
 
 router.post(
-  ["/admin/government-applications/:id/resubmit", "/admin/government/:id/resubmit"],
+  ["/admin/government/submissions/:id/payment", "/admin/government/:id/payment"],
   authenticateToken,
   roleMiddleware,
-  validateBody(resubmitGovernmentSchema),
-  governmentController.resubmitGovernment
+  validateBody(recordGovernmentPaymentSchema),
+  governmentController.recordPayment
 );
 
 router.post(
-  ["/admin/government-applications/:id/approve", "/admin/government/:id/approve"],
+  ["/admin/government/submissions/:id/appointment", "/admin/government/:id/appointment"],
   authenticateToken,
   roleMiddleware,
-  validateBody(recordGovernmentApprovalSchema),
-  governmentController.recordApproval
+  validateBody(scheduleGovernmentAppointmentSchema),
+  governmentController.scheduleAppointment
+);
+
+router.post(
+  ["/admin/government/submissions/:id/follow-up", "/admin/government/:id/follow-up"],
+  authenticateToken,
+  roleMiddleware,
+  validateBody(recordGovernmentFollowUpSchema),
+  governmentController.recordFollowUp
+);
+
+router.post(
+  ["/admin/government/submissions/:id/external-update", "/admin/government/:id/external-update"],
+  authenticateToken,
+  roleMiddleware,
+  validateBody(recordExternalUpdateSchema),
+  governmentController.recordExternalUpdate
+);
+
+router.post(
+  ["/admin/government/submissions/:id/evidence", "/admin/government/:id/evidence"],
+  authenticateToken,
+  roleMiddleware,
+  validateBody(uploadGovernmentEvidenceSchema),
+  governmentController.uploadEvidence
+);
+
+router.post(
+  ["/admin/government/submissions/:id/assign", "/admin/government/:id/assign"],
+  authenticateToken,
+  roleMiddleware,
+  validateBody(assignGovernmentCaseSchema),
+  governmentController.assignCase
 );
 
 router.post(
@@ -89,14 +154,6 @@ router.delete(
   authenticateToken,
   roleMiddleware,
   governmentController.removeReference
-);
-
-router.post(
-  ["/admin/government-applications/:id/schedule-followup", "/admin/government/:id/schedule-followup"],
-  authenticateToken,
-  roleMiddleware,
-  validateBody(scheduleGovernmentFollowUpSchema),
-  governmentController.scheduleFollowUp
 );
 
 router.get(
