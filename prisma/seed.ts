@@ -50,58 +50,228 @@ async function main() {
   });
   console.log(`✅ Admin User created: ${adminUser.email}`);
 
-  // 3. Create Sample Client User & Profile
+  // 3. Create Sample Client Users & Profiles
   const clientPasswordHash = await bcrypt.hash("Client@SwiftDoc2026!", 12);
-  const clientUser = await prisma.user.upsert({
-    where: { email: "john.kamau@example.com" },
-    update: {},
-    create: {
-      organizationId: organization.id,
-      email: "john.kamau@example.com",
-      passwordHash: clientPasswordHash,
-      role: UserRole.CLIENT,
-      isActive: true,
-      isEmailVerified: true,
-    },
-  });
 
-  await prisma.notificationPreference.upsert({
-    where: { userId: clientUser.id },
-    update: {},
-    create: {
-      userId: clientUser.id,
-      emailEnabled: true,
-      smsEnabled: true,
-      inAppEnabled: true,
-      marketingEnabled: false,
-    },
-  });
-
-  const clientProfile = await prisma.client.upsert({
-    where: { clientNumber: "SD-CL-000001" },
-    update: {
-      userId: clientUser.id,
-      organizationId: organization.id,
-    },
-    create: {
-      organizationId: organization.id,
-      userId: clientUser.id,
+  const sampleClientsData = [
+    {
       clientNumber: "SD-CL-000001",
-      clientType: ClientType.INDIVIDUAL,
-      fullName: "John Kamau Kariuki",
       email: "john.kamau@example.com",
+      fullName: "John Kamau Kariuki",
+      clientType: ClientType.INDIVIDUAL,
       phone: "+254712345678",
-      nationality: "Kenyan",
       nationalId: "28491023",
       kraPin: "A009182736P",
       county: "Nairobi",
       city: "Nairobi",
       address: "Kilimani, Argwings Kodhek Rd",
-      preferredCommunicationChannel: CommunicationChannel.EMAIL,
-      isActive: true,
+      isReviewed: true,
+      reviewedAt: new Date(Date.now() - 86400000 * 10),
+      isDuplicateFlagged: false,
     },
-  });
-  console.log(`✅ Client Profile created: ${clientProfile.fullName} (${clientProfile.clientNumber})`);
+    {
+      clientNumber: "SD-CL-000002",
+      email: "mary.wambui@example.com",
+      fullName: "Mary Wambui Njenga",
+      clientType: ClientType.INDIVIDUAL,
+      phone: "+254722998877",
+      nationalId: "30192837",
+      kraPin: "A018273645K",
+      county: "Kiambu",
+      city: "Ruiru",
+      address: "Thika Superhighway, Ruiru Bypass",
+      isReviewed: false,
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000003",
+      email: "info@apextech.co.ke",
+      fullName: "David Mutua (Contact)",
+      businessName: "Apex Tech Solutions Ltd",
+      clientType: ClientType.CORPORATE,
+      phone: "+254733445566",
+      kraPin: "P051928374L",
+      county: "Nairobi",
+      city: "Nairobi",
+      address: "Westlands, Delta Corner Towers, 7th Floor",
+      isReviewed: true,
+      reviewedAt: new Date(Date.now() - 86400000 * 15),
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000004",
+      email: "hassan.farah@example.com",
+      fullName: "Hassan Mohammed Farah",
+      clientType: ClientType.INDIVIDUAL,
+      phone: "+254711223344",
+      nationalId: "28491023",
+      kraPin: "A009182736P",
+      county: "Mombasa",
+      city: "Mombasa",
+      address: "Nyali, Links Road",
+      isReviewed: false,
+      isDuplicateFlagged: true,
+      duplicateReason: "Matching KRA PIN & National ID with SD-CL-000001",
+    },
+    {
+      clientNumber: "SD-CL-000005",
+      email: "logistics@savannah.co.ke",
+      fullName: "Peter Njuguna (MD)",
+      businessName: "Savannah Logistics Enterprise",
+      clientType: ClientType.ENTERPRISE,
+      phone: "+254701234567",
+      kraPin: "P052019283M",
+      county: "Nakuru",
+      city: "Nakuru",
+      address: "Industrial Area, Nakuru-Eldoret Highway",
+      isReviewed: true,
+      reviewedAt: new Date(Date.now() - 86400000 * 5),
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000006",
+      email: "chen.wei@globalinvest.cn",
+      fullName: "Chen Wei",
+      businessName: "Sino-Kenya Joint Ventures Ltd",
+      clientType: ClientType.FOREIGN_INVESTOR,
+      phone: "+254788112233",
+      passportNumber: "E99812736",
+      kraPin: "P053817263N",
+      county: "Nairobi",
+      city: "Nairobi",
+      address: "Kilimani, Lenana Rd",
+      isReviewed: false,
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000007",
+      email: "grace.akinyi@example.com",
+      fullName: "Grace Akinyi Omondi",
+      clientType: ClientType.INDIVIDUAL,
+      phone: "+254720991122",
+      nationalId: "31827364",
+      kraPin: "A029384756W",
+      county: "Kisumu",
+      city: "Kisumu",
+      address: "Milimani Estate, Kisumu",
+      isReviewed: true,
+      reviewedAt: new Date(Date.now() - 86400000 * 20),
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000008",
+      email: "contact@riftagro.co.ke",
+      fullName: "Kiprono Too (Director)",
+      businessName: "Rift Valley Agro-Exports Ltd",
+      clientType: ClientType.SME,
+      phone: "+254714556677",
+      kraPin: "P054819203Q",
+      county: "Uasin Gishu",
+      city: "Eldoret",
+      address: "Uganda Road, Eldoret",
+      isReviewed: false,
+      isDuplicateFlagged: false,
+    },
+    {
+      clientNumber: "SD-CL-000009",
+      email: "ibrahim.noor@example.com",
+      fullName: "Ibrahim Ahmed Noor",
+      clientType: ClientType.INDIVIDUAL,
+      phone: "+254722998877",
+      nationalId: "33918273",
+      kraPin: "A038475619Z",
+      county: "Garissa",
+      city: "Garissa",
+      address: "Kismayo Road, Garissa",
+      isReviewed: false,
+      isDuplicateFlagged: true,
+      duplicateReason: "Matching Phone Number with SD-CL-000002",
+    },
+    {
+      clientNumber: "SD-CL-000010",
+      email: "dr.kiprono@example.com",
+      fullName: "Dr. Emmanuel Kiprono Too",
+      clientType: ClientType.INDIVIDUAL,
+      phone: "+254799001122",
+      nationalId: "24819203",
+      kraPin: "A049201938B",
+      county: "Kajiado",
+      city: "Kitengela",
+      address: "Namanga Highway, Kitengela",
+      isReviewed: true,
+      reviewedAt: new Date(Date.now() - 86400000 * 30),
+      isDuplicateFlagged: false,
+    },
+  ];
+
+  let clientProfile: any = null;
+
+  for (const cData of sampleClientsData) {
+    const user = await prisma.user.upsert({
+      where: { email: cData.email },
+      update: {},
+      create: {
+        organizationId: organization.id,
+        email: cData.email,
+        passwordHash: clientPasswordHash,
+        role: UserRole.CLIENT,
+        isActive: true,
+        isEmailVerified: true,
+      },
+    });
+
+    await prisma.notificationPreference.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: {
+        userId: user.id,
+        emailEnabled: true,
+        smsEnabled: true,
+        inAppEnabled: true,
+        marketingEnabled: false,
+      },
+    });
+
+    const client = await prisma.client.upsert({
+      where: { clientNumber: cData.clientNumber },
+      update: {
+        userId: user.id,
+        organizationId: organization.id,
+        isReviewed: cData.isReviewed,
+        isDuplicateFlagged: cData.isDuplicateFlagged,
+        duplicateReason: cData.duplicateReason || null,
+        reviewedAt: cData.reviewedAt || null,
+        reviewedById: cData.isReviewed ? adminUser.id : null,
+      },
+      create: {
+        organizationId: organization.id,
+        userId: user.id,
+        clientNumber: cData.clientNumber,
+        clientType: cData.clientType,
+        fullName: cData.fullName,
+        businessName: cData.businessName || null,
+        email: cData.email,
+        phone: cData.phone,
+        nationality: "Kenyan",
+        nationalId: cData.nationalId || null,
+        passportNumber: cData.passportNumber || null,
+        kraPin: cData.kraPin || null,
+        county: cData.county,
+        city: cData.city,
+        address: cData.address,
+        isReviewed: cData.isReviewed,
+        reviewedAt: cData.reviewedAt || null,
+        reviewedById: cData.isReviewed ? adminUser.id : null,
+        isDuplicateFlagged: cData.isDuplicateFlagged,
+        duplicateReason: cData.duplicateReason || null,
+        preferredCommunicationChannel: CommunicationChannel.EMAIL,
+        isActive: true,
+      },
+    });
+
+    if (!clientProfile) clientProfile = client;
+  }
+  console.log(`✅ Seeded ${sampleClientsData.length} Client Profiles (Pending Review, Verified, Duplicates, Enterprise, Corporate, SME)`);
 
   // 4. Seed Service Categories & Real Kenyan Services
   const catalogData = [
