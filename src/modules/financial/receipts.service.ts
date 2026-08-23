@@ -216,7 +216,7 @@ export class ReceiptsService {
       if (params.toDate) where.issuedAt.lte = new Date(params.toDate);
     }
 
-    const [receipts, total] = await Promise.all([
+    const [receipts, total, grossSum, mpesaCount, bankCount] = await Promise.all([
       prisma.receipt.findMany({
         where,
         skip,
@@ -262,7 +262,25 @@ export class ReceiptsService {
         },
       }),
       prisma.receipt.count({ where }),
+      prisma.receipt.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
+      prisma.receipt.count({
+        where: {
+          ...where,
+          paymentMethod: PaymentMethod.MPESA,
+        },
+      }),
+      prisma.receipt.count({
+        where: {
+          ...where,
+          paymentMethod: { not: PaymentMethod.MPESA },
+        },
+      }),
     ]);
+
+    const grossValue = grossSum._sum.amount ? grossSum._sum.amount.toString() : "0.00";
 
     return {
       data: receipts,
@@ -271,6 +289,12 @@ export class ReceiptsService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+      },
+      summary: {
+        totalReceipts: total,
+        mpesaReceipts: mpesaCount,
+        bankReceipts: bankCount,
+        grossValue,
       },
     };
   }
