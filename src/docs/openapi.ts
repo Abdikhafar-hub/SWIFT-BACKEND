@@ -17,8 +17,8 @@ export const openApiDocument = {
       description: "Local Development Server (API v1)",
     },
     {
-      url: "https://api.swiftdoc.co.ke/api/v1",
-      description: "Production Server (API v1)",
+      url: "https://app.swiftdoc.co.ke/api/v1",
+      description: "Production VPS Server (API v1)",
     },
   ],
   components: {

@@ -8,6 +8,8 @@ import {
   NoteVisibility,
   SlaEventType,
   SlaEventCategory,
+  NotificationChannel,
+  NotificationStatus,
 } from "@prisma/client";
 import { NotFoundError, BadRequestError, ForbiddenError } from "../../common/errors/app-error.js";
 import { recordAuditLog } from "../../common/utils/audit.js";
@@ -280,6 +282,28 @@ export class ClientActionsService {
       },
     });
 
+    if (actorRole === UserRole.CLIENT && action.application.assignedAdminId) {
+      try {
+        await prisma.notification.create({
+          data: {
+            organizationId,
+            userId: action.application.assignedAdminId,
+            applicationId: action.applicationId,
+            channel: NotificationChannel.IN_APP,
+            type: "CLIENT_ACTION_RESOLVED",
+            title: `Client Action Resolved: ${action.title}`,
+            message: `Client has resolved directive "${action.title}" on application #${action.application.applicationNumber}.`,
+            status: NotificationStatus.DELIVERED,
+            sentAt: new Date(),
+          },
+        });
+      } catch (err) {
+        console.error("Failed to send admin action completion notification:", err);
+      }
+    }
+
+
+
     return result;
   }
 
@@ -363,6 +387,123 @@ export class ClientActionsService {
   }
 
   /**
+   * Get single action by ID with strict security checks
+   */
+  async getActionById(
+    actionId: string,
+    organizationId: string,
+    userRole: UserRole,
+    clientId?: string
+  ) {
+    const action = await prisma.clientAction.findFirst({
+      where: { id: actionId, organizationId },
+      include: {
+        application: {
+          select: {
+            id: true,
+            applicationNumber: true,
+            clientId: true,
+            status: true,
+            priority: true,
+            service: { select: { id: true, name: true } },
+            client: { select: { id: true, fullName: true, businessName: true, email: true, phone: true } },
+          },
+        },
+        requirement: { select: { id: true, name: true, type: true } },
+        createdBy: { select: { id: true, email: true } },
+        completedBy: { select: { id: true, email: true } },
+      },
+    });
+
+    if (!action) throw new NotFoundError("Client action");
+
+    if (userRole === UserRole.CLIENT) {
+      if (!clientId || action.application.clientId !== clientId) {
+        throw new ForbiddenError("Access denied to this action item");
+      }
+    }
+
+    return action;
+  }
+
+  /**
+   * Get paginated actions for Admin Action Center
+   */
+  async getAllActionsForAdmin(
+    organizationId: string,
+    query: {
+      status?: ClientActionStatus;
+      priority?: ApplicationPriority;
+      type?: ClientActionType;
+      applicationId?: string;
+      clientId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = { organizationId };
+
+    if (query.status) where.status = query.status;
+    if (query.priority) where.priority = query.priority;
+    if (query.type) where.type = query.type;
+    if (query.applicationId) where.applicationId = query.applicationId;
+
+    if (query.clientId) {
+      where.application = { clientId: query.clientId };
+    }
+
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: "insensitive" } },
+        { description: { contains: query.search, mode: "insensitive" } },
+        { application: { applicationNumber: { contains: query.search, mode: "insensitive" } } },
+        { application: { client: { fullName: { contains: query.search, mode: "insensitive" } } } },
+        { application: { client: { businessName: { contains: query.search, mode: "insensitive" } } } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.clientAction.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ status: "asc" }, { dueAt: "asc" }, { createdAt: "desc" }],
+        include: {
+          application: {
+            select: {
+              id: true,
+              applicationNumber: true,
+              status: true,
+              priority: true,
+              service: { select: { id: true, name: true } },
+              client: { select: { id: true, fullName: true, businessName: true, email: true } },
+            },
+          },
+          requirement: { select: { id: true, name: true, type: true } },
+          createdBy: { select: { id: true, email: true } },
+          completedBy: { select: { id: true, email: true } },
+        },
+      }),
+      prisma.clientAction.count({ where }),
+    ]);
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
    * Get actions for a specific application
    */
   async getApplicationActions(
@@ -391,19 +532,22 @@ export class ClientActionsService {
   }
 
   /**
-   * Get open actions for client dashboard
+   * Get actions for client portal (open or all)
    */
-  async getClientOpenActions(organizationId: string, clientId: string) {
-    return prisma.clientAction.findMany({
-      where: {
-        organizationId,
-        status: ClientActionStatus.OPEN,
-        application: {
-          clientId,
-          deletedAt: null,
-        },
+  async getClientActions(organizationId: string, clientId: string, status?: ClientActionStatus) {
+    const where: any = {
+      organizationId,
+      application: {
+        clientId,
+        deletedAt: null,
       },
-      orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
+    };
+
+    if (status) where.status = status;
+
+    return prisma.clientAction.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { dueAt: "asc" }, { createdAt: "desc" }],
       include: {
         application: {
           select: {
@@ -416,6 +560,14 @@ export class ClientActionsService {
       },
     });
   }
+
+  /**
+   * Get open actions for client dashboard
+   */
+  async getClientOpenActions(organizationId: string, clientId: string) {
+    return this.getClientActions(organizationId, clientId, ClientActionStatus.OPEN);
+  }
 }
 
 export const clientActionsService = new ClientActionsService();
+

@@ -9,7 +9,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(5000),
   API_PREFIX: z.string().default("/api/v1"),
-  CORS_ORIGIN: z.string().default("http://localhost:3000,http://localhost:5173"),
+  PUBLIC_SITE_URL: z.string().url().default("http://localhost:3000"),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default("http://localhost:3000,http://localhost:5173,https://swiftdoc.co.ke,https://app.swiftdoc.co.ke"),
 
   DATABASE_URL: z.string().url("DATABASE_URL must be a valid PostgreSQL connection URL"),
 
@@ -35,7 +37,7 @@ const envSchema = z.object({
   MPESA_CONSUMER_SECRET: z.string().default("mock_mpesa_consumer_secret"),
   MPESA_SHORTCODE: z.string().default("174379"),
   MPESA_PASSKEY: z.string().default("mock_mpesa_passkey"),
-  MPESA_CALLBACK_URL: z.string().url().default("https://api.swiftdoc.co.ke/api/v1/payments/callbacks/mpesa"),
+  MPESA_CALLBACK_URL: z.string().url().default("https://app.swiftdoc.co.ke/api/v1/payments/callbacks/mpesa"),
 });
 
 const parseEnv = () => {

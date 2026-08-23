@@ -10,8 +10,9 @@ import {
   renderEmailDetailsTable,
   DetailRow,
 } from "./email-builder.js";
+import { env } from "../../config/env.js";
 
-const DEFAULT_PORTAL_URL = "http://localhost:3000";
+const DEFAULT_PORTAL_URL = env.APP_URL || "http://localhost:3000";
 
 // ============================================================================
 // 1. AUTHENTICATION & SECURITY TEMPLATES

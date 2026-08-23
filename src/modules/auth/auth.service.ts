@@ -659,8 +659,7 @@ export class AuthService {
       { expiresIn: "1h" }
     );
 
-    const clientOrigin = env.CORS_ORIGIN.split(",")[0].trim() || "http://localhost:3000";
-    const resetLink = `${clientOrigin}/reset-password?token=${resetToken}`;
+    const resetLink = `${env.APP_URL}/reset-password?token=${resetToken}`;
     const clientName = user.clientProfile?.fullName || "Valued Client";
 
     void emailService.sendPasswordResetEmail(user.email, clientName, resetLink, 60);
@@ -862,6 +861,11 @@ export class AuthService {
       resource: "User",
       resourceId: user.id,
     });
+
+    const clientProfile = await prisma.client.findFirst({ where: { userId: user.id } });
+    if (clientProfile) {
+      void emailService.sendWelcomeEmail(user.email, clientProfile.fullName, clientProfile.clientNumber);
+    }
 
     return {
       success: true,
