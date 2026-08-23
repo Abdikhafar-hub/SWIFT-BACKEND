@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, ClientType, CommunicationChannel, RequirementType } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import process from "node:process";
 
 const prisma = new PrismaClient();
 
