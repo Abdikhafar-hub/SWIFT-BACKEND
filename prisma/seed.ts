@@ -1,6 +1,8 @@
 import { PrismaClient, UserRole, ClientType, CommunicationChannel, RequirementType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
+declare const process: any;
+
 const prisma = new PrismaClient();
 
 async function main() {
