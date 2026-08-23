@@ -1,6 +1,5 @@
 import { PrismaClient, UserRole, ClientType, CommunicationChannel, RequirementType } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import process from "node:process";
 
 const prisma = new PrismaClient();
 
@@ -88,7 +87,7 @@ async function main() {
       email: "info@apextech.co.ke",
       fullName: "David Mutua (Contact)",
       businessName: "Apex Tech Solutions Ltd",
-      clientType: ClientType.CORPORATE,
+      clientType: ClientType.BUSINESS,
       phone: "+254733445566",
       kraPin: "P051928374L",
       county: "Nairobi",
@@ -118,7 +117,7 @@ async function main() {
       email: "logistics@savannah.co.ke",
       fullName: "Peter Njuguna (MD)",
       businessName: "Savannah Logistics Enterprise",
-      clientType: ClientType.ENTERPRISE,
+      clientType: ClientType.ORGANIZATION,
       phone: "+254701234567",
       kraPin: "P052019283M",
       county: "Nakuru",
@@ -133,7 +132,7 @@ async function main() {
       email: "chen.wei@globalinvest.cn",
       fullName: "Chen Wei",
       businessName: "Sino-Kenya Joint Ventures Ltd",
-      clientType: ClientType.FOREIGN_INVESTOR,
+      clientType: ClientType.BUSINESS,
       phone: "+254788112233",
       passportNumber: "E99812736",
       kraPin: "P053817263N",
@@ -163,7 +162,7 @@ async function main() {
       email: "contact@riftagro.co.ke",
       fullName: "Kiprono Too (Director)",
       businessName: "Rift Valley Agro-Exports Ltd",
-      clientType: ClientType.SME,
+      clientType: ClientType.BUSINESS,
       phone: "+254714556677",
       kraPin: "P054819203Q",
       county: "Uasin Gishu",
