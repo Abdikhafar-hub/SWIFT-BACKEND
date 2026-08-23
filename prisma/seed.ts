@@ -3107,6 +3107,119 @@ async function main() {
         });
       }
       console.log(`🏛️ Seeded Government Registry Operations: ${govPlatforms.length} Registry Filings`);
+
+      // 5.9 Seed Delivery & Fulfillment Operations (/admin/deliveries)
+      const deliverySeedData = [
+        {
+          id: "seed-delivery-1",
+          dispatchReference: "SD-DISP-2026-0001",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "John Kamau Kariuki",
+          recipientPhone: "+254 722 000 111",
+          recipientEmail: "john.kamau@swiftdoc.co.ke",
+          physicalAddress: "Westlands Commercial Centre, Block B, Suite 402, Nairobi",
+          trackingNumber: "FG-8829102-KE",
+          carrier: "Fargo Courier",
+          confirmationStatus: "PENDING",
+          notes: JSON.stringify({ deliveryType: "Certificate", priority: "Urgent", instructions: "Hand-deliver original CR12 and Certificate of Incorporation." }),
+        },
+        {
+          id: "seed-delivery-2",
+          dispatchReference: "SD-DISP-2026-0002",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "Jane Wanjiru Mutua",
+          recipientPhone: "+254 733 111 222",
+          recipientEmail: "jane.wanjiru@swiftdoc.co.ke",
+          physicalAddress: "Kilimani Business Park, Argwings Kodhek Rd, Nairobi",
+          trackingNumber: "G4S-991823-NBI",
+          carrier: "G4S Secure Logistics",
+          confirmationStatus: "DISPATCHED",
+          notes: JSON.stringify({ deliveryType: "Statutory Document", priority: "High", instructions: "Call client 30 mins prior to arrival." }),
+        },
+        {
+          id: "seed-delivery-3",
+          dispatchReference: "SD-DISP-2026-0003",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "David Ochieng Otieno",
+          recipientPhone: "+254 711 333 444",
+          recipientEmail: "david.ochieng@swiftdoc.co.ke",
+          physicalAddress: "Upperhill Towers, 8th Floor, Nairobi",
+          trackingNumber: "SPD-449120-KE",
+          carrier: "Speedaf Express",
+          confirmationStatus: "IN_TRANSIT",
+          notes: JSON.stringify({ deliveryType: "Compliance Documents", priority: "Normal", instructions: "Requires physical signature upon delivery." }),
+        },
+        {
+          id: "seed-delivery-4",
+          dispatchReference: "SD-DISP-2026-0004",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "Alice Chebet Kiprop",
+          recipientPhone: "+254 720 444 555",
+          recipientEmail: "alice.chebet@swiftdoc.co.ke",
+          physicalAddress: "Mombasa Trade Centre, Nkrumah Rd, Mombasa",
+          trackingNumber: "FG-7723910-MSA",
+          carrier: "Fargo Courier",
+          confirmationStatus: "DELIVERED",
+          deliveredAt: new Date(Date.now() - 86400000),
+          notes: JSON.stringify({ deliveryType: "Application Documents", priority: "Urgent", instructions: "Delivered to client reception." }),
+        },
+        {
+          id: "seed-delivery-5",
+          dispatchReference: "SD-DISP-2026-0005",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "Peter Mwangi Njuguna",
+          recipientPhone: "+254 701 555 666",
+          recipientEmail: "peter.mwangi@swiftdoc.co.ke",
+          physicalAddress: "Kisumu Mega City Complex, Kisumu",
+          trackingNumber: "G4S-110293-KSM",
+          carrier: "G4S Secure Logistics",
+          confirmationStatus: "CONFIRMED",
+          deliveredAt: new Date(Date.now() - 172800000),
+          notes: JSON.stringify({ deliveryType: "Client Documents", priority: "Normal", instructions: "Confirmed by recipient." }),
+        },
+        {
+          id: "seed-delivery-6",
+          dispatchReference: "SD-DISP-2026-0006",
+          deliveryMethod: "PHYSICAL",
+          recipientName: "Grace Njeri Hassan",
+          recipientPhone: "+254 798 777 888",
+          recipientEmail: "grace.njeri@swiftdoc.co.ke",
+          physicalAddress: "Nakuru Arcade, Kenyatta Avenue, Nakuru",
+          trackingNumber: "SWIFT-RIDER-04",
+          carrier: "Swift Doc In-House",
+          confirmationStatus: "FAILED",
+          notes: JSON.stringify({ deliveryType: "Statutory Document", priority: "High", instructions: "Recipient unavailable at specified location." }),
+        },
+      ];
+
+      for (let i = 0; i < deliverySeedData.length; i++) {
+        const item = deliverySeedData[i];
+        const targetApp = seededApps[i % seededApps.length];
+        await prisma.applicationDelivery.upsert({
+          where: { id: item.id },
+          update: {
+            confirmationStatus: item.confirmationStatus,
+          },
+          create: {
+            id: item.id,
+            organizationId: organization.id,
+            applicationId: targetApp.id,
+            deliveryMethod: item.deliveryMethod as any,
+            recipientName: item.recipientName,
+            recipientPhone: item.recipientPhone,
+            recipientEmail: item.recipientEmail,
+            physicalAddress: item.physicalAddress,
+            dispatchReference: item.dispatchReference,
+            trackingNumber: item.trackingNumber,
+            carrier: item.carrier,
+            confirmationStatus: item.confirmationStatus,
+            deliveredAt: item.deliveredAt || null,
+            deliveredById: adminUser.id,
+            notes: item.notes,
+          },
+        });
+      }
+      console.log(`🚚 Seeded Delivery & Fulfillment Operations: ${deliverySeedData.length} Shipments (Pending, Dispatched, In Transit, Delivered, Failed)`);
     }
   }
 
