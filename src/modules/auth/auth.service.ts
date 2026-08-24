@@ -14,6 +14,8 @@ import {
 import { generateClientNumber } from "../../common/utils/generators.js";
 import { createAuditLog } from "../../common/utils/audit.js";
 import { emailService } from "../../infrastructure/email/index.js";
+import { smsService } from "../../infrastructure/sms/index.js";
+import { formatKenyanPhone } from "../../common/utils/phone-formatter.js";
 import { detectDuplicateClient } from "../../common/utils/duplicate-detector.js";
 import { notificationOrchestrator } from "../notifications/notification-orchestrator.service.js";
 
@@ -87,11 +89,13 @@ export class AuthService {
       where: { slug: "swift-doc" },
     });
 
+    const normalizedPhone = dto.phone ? formatKenyanPhone(dto.phone) : null;
+
     // 3. Check for duplicates
     const duplicateCheck = await detectDuplicateClient({
       organizationId: organization.id,
       email: normalizedEmail,
-      phone: dto.phone,
+      phone: normalizedPhone || dto.phone,
       nationalId: dto.nationalId,
       passportNumber: dto.passportNumber,
       kraPin: dto.kraPin,
@@ -101,8 +105,8 @@ export class AuthService {
     // 4. Hash password
     const passwordHash = await bcrypt.hash(dto.password, env.BCRYPT_SALT_ROUNDS);
 
-    // 5. Generate 6-digit Email Verification OTP
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    // 5. Generate 6-digit Verification OTP
+    const rawOtp = crypto.randomInt(100000, 999999).toString();
     const otpHash = this.hashToken(rawOtp);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     const otpResendAfter = new Date(Date.now() + 60 * 1000); // 60 seconds cooldown
@@ -115,6 +119,7 @@ export class AuthService {
         data: {
           organizationId: organization.id,
           email: normalizedEmail,
+          phone: normalizedPhone,
           passwordHash,
           role: UserRole.CLIENT,
           isActive: true,
@@ -136,7 +141,7 @@ export class AuthService {
           fullName: dto.fullName.trim(),
           businessName: dto.businessName?.trim() || null,
           email: normalizedEmail,
-          phone: dto.phone.trim(),
+          phone: normalizedPhone || dto.phone.trim(),
           nationalId: dto.nationalId?.trim() || null,
           passportNumber: dto.passportNumber?.trim() || null,
           kraPin: dto.kraPin?.trim() || null,
@@ -199,9 +204,18 @@ export class AuthService {
       },
     });
 
-    // 8. Send Verification OTP Email & Admin Notification (Async background)
+    // 8. Send Verification OTP Email & SMS (Async background)
     // NOTE: Welcome Email MUST NOT be sent here! It is sent ONLY after email verification and client onboarding.
     void emailService.sendEmailVerificationEmail(result.user.email, result.client.fullName, rawOtp);
+
+    if (result.client.phone) {
+      const targetPhone = formatKenyanPhone(result.client.phone);
+      void smsService.sendSms({
+        to: targetPhone,
+        message: `Swift Doc: Hello ${result.client.fullName}, your verification code is ${rawOtp}. Valid for 10 minutes.`,
+      });
+    }
+
     void notificationOrchestrator.notifyAdminNewRegistration({
       organizationId: organization.id,
       clientId: result.client.id,
@@ -897,7 +911,7 @@ export class AuthService {
       throw new BadRequestError(`Please wait ${remainingSecs} second(s) before requesting another verification code.`);
     }
 
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const rawOtp = crypto.randomInt(100000, 999999).toString();
     const otpHash = this.hashToken(rawOtp);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     const otpResendAfter = new Date(Date.now() + 60 * 1000); // 60 seconds
@@ -915,9 +929,18 @@ export class AuthService {
     const clientName = user.clientProfile?.fullName || "Valued Client";
     void emailService.sendEmailVerificationEmail(user.email, clientName, rawOtp);
 
+    const userPhone = user.clientProfile?.phone || user.phone;
+    if (userPhone) {
+      const targetPhone = formatKenyanPhone(userPhone);
+      void smsService.sendSms({
+        to: targetPhone,
+        message: `Swift Doc: Hello ${clientName}, your verification code is ${rawOtp}. Valid for 10 minutes.`,
+      });
+    }
+
     return {
       success: true,
-      message: `A new 6-digit verification code has been sent to ${user.email}.`,
+      message: `A new 6-digit verification code has been sent to ${user.email}${userPhone ? " and SMS" : ""}.`,
       mockOtp: env.NODE_ENV === "development" ? rawOtp : undefined,
     };
   }

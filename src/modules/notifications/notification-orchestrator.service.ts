@@ -1,6 +1,7 @@
 import { prisma } from "../../infrastructure/database/prisma.js";
 import { emailService } from "../../infrastructure/email/index.js";
 import { smsService } from "../../infrastructure/sms/index.js";
+import { formatKenyanPhone } from "../../common/utils/phone-formatter.js";
 import { NotificationChannel, NotificationStatus, UserRole } from "@prisma/client";
 import { NotificationTemplates } from "./notification-templates.js";
 
@@ -20,12 +21,7 @@ export class NotificationOrchestratorService {
    * Normalize Kenyan phone numbers to E.164 (+254...)
    */
   normalizePhoneNumber(phone: string): string {
-    const cleaned = phone.replace(/\s+/g, "").replace(/-/g, "");
-    if (cleaned.startsWith("+254")) return cleaned;
-    if (cleaned.startsWith("254")) return `+${cleaned}`;
-    if (cleaned.startsWith("0")) return `+254${cleaned.slice(1)}`;
-    if (cleaned.startsWith("7") || cleaned.startsWith("1")) return `+254${cleaned}`;
-    return cleaned;
+    return formatKenyanPhone(phone);
   }
 
   /**

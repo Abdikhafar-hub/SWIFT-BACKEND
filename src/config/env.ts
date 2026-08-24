@@ -31,6 +31,7 @@ const envSchema = z.object({
   AT_API_KEY: z.string().default("mock_at_api_key"),
   AT_USERNAME: z.string().default("mock_at_username"),
   AT_SENDER_ID: z.string().default("SWIFTDOC"),
+  SMS_TEST_RECIPIENT: z.string().optional().default("+254712345678"),
 
   MPESA_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
   MPESA_CONSUMER_KEY: z.string().default("mock_mpesa_consumer_key"),

@@ -3,6 +3,7 @@ import { UserRole, NoteVisibility, NotificationChannel, NotificationStatus } fro
 import { NotFoundError, ForbiddenError, BadRequestError } from "../../common/errors/app-error.js";
 import { emailService } from "../../infrastructure/email/index.js";
 import { smsService } from "../../infrastructure/sms/index.js";
+import { formatKenyanPhone } from "../../common/utils/phone-formatter.js";
 
 export interface SendMessageInput {
   applicationId: string;
@@ -103,8 +104,9 @@ export class ApplicationMessageService {
 
       if (recipientPhone) {
         try {
+          const targetPhone = formatKenyanPhone(recipientPhone);
           const smsRes = await smsService.sendSms({
-            to: recipientPhone,
+            to: targetPhone,
             message: `Swift Doc [Case #${app.applicationNumber}]: ${input.message.length > 130 ? input.message.slice(0, 127) + '...' : input.message}`,
           });
           if (smsRes?.messageId) {

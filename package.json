@@ -15,6 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:sms": "tsx src/scripts/test-sms.ts",
+    "test:sms:auth": "tsx src/scripts/test-sms-auth.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

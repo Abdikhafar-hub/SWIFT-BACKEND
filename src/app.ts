@@ -33,6 +33,7 @@ import { adminReconciliationRoutes } from "./modules/financial/reconciliation.ro
 import { notificationRouter, notificationRoutes } from "./modules/notifications/notifications.routes.js";
 import { adminAuditRoutes } from "./modules/audit/audit.routes.js";
 import { adminAccountRoutes } from "./modules/admin-account/admin-account.routes.js";
+import { smsRoutes } from "./modules/sms/sms.routes.js";
 
 export const app = express();
 
@@ -122,18 +123,21 @@ v1Router.use("/client/invoices", clientInvoicesRoutes);
 v1Router.use("/client/invoices", clientPaymentProofRoutes);
 v1Router.use("/client/receipts", clientReceiptsRoutes);
 v1Router.use("/client/payments", clientPaymentRoutes);
+v1Router.use("/client/actions", clientActionsRouter);
 
 // Shared / Cross-Domain Operations
 v1Router.use(governmentRouter);
 v1Router.use(clientActionsRouter);
 v1Router.use(slaRouter);
 v1Router.use(documentRouter);
+v1Router.use("/notifications", notificationRouter);
 v1Router.use(notificationRouter);
 
 // Public / General Service Catalog
 v1Router.use("/services", clientServiceRoutes);
 
 // Payments & Webhooks
+v1Router.use("/sms", smsRoutes); // SMS status & delivery callbacks
 v1Router.use("/payments", paymentCallbackRoutes); // public callbacks
 v1Router.use("/payments", paymentRoutes);
 
