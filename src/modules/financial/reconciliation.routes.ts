@@ -13,6 +13,11 @@ export const adminReconciliationRoutes = Router();
 adminReconciliationRoutes.use(authenticateToken, requireRole([UserRole.ADMIN]));
 
 adminReconciliationRoutes.get(
+  "/metrics",
+  reconciliationController.getMetrics.bind(reconciliationController)
+);
+
+adminReconciliationRoutes.get(
   "/",
   validateQuery(listReconciliationQuerySchema),
   reconciliationController.listRecords.bind(reconciliationController)

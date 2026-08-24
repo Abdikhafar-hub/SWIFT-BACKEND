@@ -3154,6 +3154,51 @@ async function main() {
       },
     });
 
+    await prisma.reconciliationRecord.upsert({
+      where: { id: "seed-recon-03" },
+      update: {},
+      create: {
+        id: "seed-recon-03",
+        organizationId: organization.id,
+        reference: "QKH88VAR77",
+        amount: 15500.0,
+        currency: "KES",
+        provider: "BANK",
+        status: "SUSPICIOUS",
+        notes: "Amount variance: statement KES 15,500.00 vs internal invoice KES 16,150.00 (Underpayment by KES 650.00)",
+      },
+    });
+
+    await prisma.reconciliationRecord.upsert({
+      where: { id: "seed-recon-04" },
+      update: {},
+      create: {
+        id: "seed-recon-04",
+        organizationId: organization.id,
+        reference: "QKH76XZ12A",
+        amount: 2150.0,
+        currency: "KES",
+        provider: "MPESA",
+        status: "DUPLICATE",
+        notes: "Ambiguous duplicate match: reference code exists on multiple ledger entries",
+      },
+    });
+
+    await prisma.reconciliationRecord.upsert({
+      where: { id: "seed-recon-05" },
+      update: {},
+      create: {
+        id: "seed-recon-05",
+        organizationId: organization.id,
+        reference: "QKH11REV00",
+        amount: 4500.0,
+        currency: "KES",
+        provider: "PESAPAL",
+        status: "REVERSED",
+        notes: "Settlement reversed due to gateway chargeback claim",
+      },
+    });
+
     console.log(`💳 Seeded Phase 4 Financial Ledger: Multi-state Invoices, Transactions, Receipts, and Reconciliation records.`);
 
     // 5.6 Seed Refund Claims & Financial Reversals (/admin/refunds)

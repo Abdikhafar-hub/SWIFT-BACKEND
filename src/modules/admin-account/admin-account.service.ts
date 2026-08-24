@@ -90,7 +90,7 @@ export class AdminAccountService {
     }
 
     // Process base64 buffer
-    const base64Clean = input.base64Data.replace(/^data:image\/\w+;base64,/, "");
+    const base64Clean = input.base64Data.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
     const buffer = Buffer.from(base64Clean, "base64");
 
     // Validate size (max 5MB)
@@ -99,11 +99,17 @@ export class AdminAccountService {
       throw new BadRequestError("Profile image must be less than 5MB in size");
     }
 
+    // Normalize mimeType
+    let mimeType = input.mimeType.toLowerCase();
+    if (mimeType === "image/jpg" || mimeType === "image/pjpeg") {
+      mimeType = "image/jpeg";
+    }
+
     // Upload using storage service abstraction
     const uploadResult = await storageService.upload({
       buffer,
       fileName: input.fileName,
-      mimeType: input.mimeType,
+      mimeType,
       folder: "avatars",
     });
 

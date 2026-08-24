@@ -6,6 +6,72 @@ import { recordAuditLog } from "../../common/utils/audit.js";
 
 export class ReconciliationService {
   /**
+   * Aggregate real-time reconciliation metrics for administrative dashboard
+   */
+  async getReconciliationMetrics(organizationId: string) {
+    const records = await prisma.reconciliationRecord.findMany({
+      where: { organizationId },
+      select: {
+        amount: true,
+        status: true,
+      },
+    });
+
+    let totalRecords = records.length;
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+    let suspiciousCount = 0;
+    let duplicateCount = 0;
+    let reversedCount = 0;
+
+    let totalIngestedVolume = new Prisma.Decimal(0);
+    let matchedVolume = new Prisma.Decimal(0);
+    let unmatchedVolume = new Prisma.Decimal(0);
+
+    for (const r of records) {
+      const amt = r.amount || new Prisma.Decimal(0);
+      totalIngestedVolume = totalIngestedVolume.add(amt);
+
+      switch (r.status) {
+        case ReconciliationStatus.MATCHED:
+          matchedCount++;
+          matchedVolume = matchedVolume.add(amt);
+          break;
+        case ReconciliationStatus.UNMATCHED:
+          unmatchedCount++;
+          unmatchedVolume = unmatchedVolume.add(amt);
+          break;
+        case ReconciliationStatus.SUSPICIOUS:
+          suspiciousCount++;
+          unmatchedVolume = unmatchedVolume.add(amt);
+          break;
+        case ReconciliationStatus.DUPLICATE:
+          duplicateCount++;
+          unmatchedVolume = unmatchedVolume.add(amt);
+          break;
+        case ReconciliationStatus.REVERSED:
+          reversedCount++;
+          break;
+      }
+    }
+
+    const reconciledRate = totalRecords > 0 ? Math.round((matchedCount / totalRecords) * 100) : 100;
+
+    return {
+      totalRecords,
+      matchedCount,
+      unmatchedCount,
+      suspiciousCount,
+      duplicateCount,
+      reversedCount,
+      totalIngestedVolume: totalIngestedVolume.toNumber(),
+      matchedVolume: matchedVolume.toNumber(),
+      unmatchedVolume: unmatchedVolume.toNumber(),
+      reconciledRate,
+    };
+  }
+
+  /**
    * List reconciliation records with filters and pagination
    */
   async listReconciliationRecords(
@@ -35,6 +101,7 @@ export class ReconciliationService {
       where.OR = [
         { reference: { contains: params.search, mode: "insensitive" } },
         { notes: { contains: params.search, mode: "insensitive" } },
+        { provider: { contains: params.search, mode: "insensitive" } },
       ];
     }
 
@@ -59,10 +126,22 @@ export class ReconciliationService {
               amount: true,
               status: true,
               paidAt: true,
+              externalReference: true,
+              providerReference: true,
               payment: {
                 select: {
                   id: true,
                   invoiceNumber: true,
+                  totalAmount: true,
+                  amountPaid: true,
+                  client: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      businessName: true,
+                      email: true,
+                    },
+                  },
                   application: {
                     select: {
                       id: true,
@@ -77,7 +156,7 @@ export class ReconciliationService {
             },
           },
           reconciledBy: {
-            select: { id: true, email: true },
+            select: { id: true, email: true, firstName: true, lastName: true },
           },
         },
       }),
@@ -114,7 +193,7 @@ export class ReconciliationService {
           },
         },
         reconciledBy: {
-          select: { id: true, email: true },
+          select: { id: true, email: true, firstName: true, lastName: true },
         },
       },
     });
@@ -161,6 +240,7 @@ export class ReconciliationService {
         OR: [
           { externalReference: data.reference },
           { providerReference: data.reference },
+          { transactionNumber: data.reference },
         ],
       },
     });
@@ -208,7 +288,7 @@ export class ReconciliationService {
     const unmatched = await prisma.reconciliationRecord.findMany({
       where: {
         organizationId,
-        status: { in: [ReconciliationStatus.UNMATCHED, ReconciliationStatus.SUSPICIOUS] },
+        status: { in: [ReconciliationStatus.UNMATCHED, ReconciliationStatus.SUSPICIOUS, ReconciliationStatus.DUPLICATE] },
       },
     });
 
@@ -218,13 +298,16 @@ export class ReconciliationService {
     let unchangedCount = 0;
 
     for (const record of unmatched) {
-      // Find candidate transactions
+      // Find candidate transactions by multiple references
       const transactions = await prisma.paymentTransaction.findMany({
         where: {
           organizationId,
           OR: [
             { externalReference: record.reference },
             { providerReference: record.reference },
+            { transactionNumber: record.reference },
+            { id: record.reference },
+            { payment: { invoiceNumber: record.reference } },
           ],
         },
       });
@@ -235,12 +318,12 @@ export class ReconciliationService {
       }
 
       if (transactions.length > 1) {
-        // Multiple matches detected
+        // Multiple matches detected -> mark duplicate exception
         await prisma.reconciliationRecord.update({
           where: { id: record.id },
           data: {
             status: ReconciliationStatus.DUPLICATE,
-            notes: `Duplicate match: found ${transactions.length} internal transactions with reference ${record.reference}`,
+            notes: `Ambiguous match: found ${transactions.length} internal transactions for ref ${record.reference}`,
           },
         });
         duplicateCount++;
@@ -267,19 +350,27 @@ export class ReconciliationService {
           data: {
             transactionId: tx.id,
             status: ReconciliationStatus.MATCHED,
-            notes: "Successfully matched by reconciliation engine",
+            notes: "Successfully matched by automated reconciliation engine",
             reconciledAt: new Date(),
             reconciledById: userId || null,
           },
         });
+
+        // Update transaction status to COMPLETED
+        await prisma.paymentTransaction.update({
+          where: { id: tx.id },
+          data: { status: "COMPLETED" as any },
+        });
+
         matchedCount++;
       } else {
+        const diff = record.amount.sub(tx.amount).toNumber();
         await prisma.reconciliationRecord.update({
           where: { id: record.id },
           data: {
             transactionId: tx.id,
             status: ReconciliationStatus.SUSPICIOUS,
-            notes: `Amount mismatch: statement KES ${record.amount.toString()} vs internal KES ${tx.amount.toString()}`,
+            notes: `Amount variance: statement KES ${record.amount.toString()} vs internal KES ${tx.amount.toString()} (Diff: KES ${diff})`,
           },
         });
         suspiciousCount++;
@@ -314,13 +405,17 @@ export class ReconciliationService {
   }
 
   /**
-   * Manually resolve / link a reconciliation record to an internal transaction
+   * Manually resolve / link a reconciliation record
    */
   async manualResolveMatch(
     recordId: string,
     organizationId: string,
-    transactionId: string,
-    notes: string,
+    options: {
+      status?: ReconciliationStatus;
+      transactionId?: string;
+      matchedTransactionId?: string;
+      notes?: string;
+    },
     userId: string
   ) {
     const record = await prisma.reconciliationRecord.findFirst({
@@ -331,21 +426,39 @@ export class ReconciliationService {
       throw new NotFoundError("Reconciliation record not found");
     }
 
-    const transaction = await prisma.paymentTransaction.findFirst({
-      where: { id: transactionId, organizationId },
-    });
+    let linkedTxId: string | null = record.transactionId;
+    const searchTxId = options.transactionId || options.matchedTransactionId;
 
-    if (!transaction) {
-      throw new NotFoundError("Internal transaction not found");
+    if (searchTxId && searchTxId.trim()) {
+      const transaction = await prisma.paymentTransaction.findFirst({
+        where: {
+          organizationId,
+          OR: [
+            { id: searchTxId.trim() },
+            { transactionNumber: searchTxId.trim() },
+            { externalReference: searchTxId.trim() },
+            { providerReference: searchTxId.trim() },
+          ],
+        },
+      });
+
+      if (transaction) {
+        linkedTxId = transaction.id;
+      }
     }
+
+    const targetStatus = options.status || ReconciliationStatus.MATCHED;
+    const notesText = options.notes
+      ? `Manual resolution [${targetStatus}]: ${options.notes}`
+      : `Manual audit resolution set to ${targetStatus}`;
 
     const updated = await prisma.reconciliationRecord.update({
       where: { id: recordId },
       data: {
-        transactionId: transaction.id,
-        status: ReconciliationStatus.MATCHED,
-        notes: `Manual resolution: ${notes}`,
-        reconciledAt: new Date(),
+        transactionId: linkedTxId,
+        status: targetStatus,
+        notes: notesText,
+        reconciledAt: targetStatus === ReconciliationStatus.MATCHED ? new Date() : record.reconciledAt,
         reconciledById: userId,
       },
     });
@@ -359,8 +472,9 @@ export class ReconciliationService {
       resourceId: recordId,
       metadata: {
         reference: record.reference,
-        transactionId,
-        notes,
+        status: targetStatus,
+        transactionId: linkedTxId,
+        notes: options.notes,
       },
     });
 

@@ -4,6 +4,20 @@ import { reconciliationService } from "./reconciliation.service.js";
 
 export class ReconciliationController {
   /**
+   * Admin: Get reconciliation metrics dashboard KPI
+   */
+  async getMetrics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const metrics = await reconciliationService.getReconciliationMetrics(
+        req.user!.organizationId
+      );
+      res.status(200).json({ success: true, data: metrics });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Admin: List reconciliation records
    */
   async listRecords(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -71,8 +85,7 @@ export class ReconciliationController {
       const updated = await reconciliationService.manualResolveMatch(
         String(req.params.id),
         req.user!.organizationId,
-        req.body.transactionId,
-        req.body.notes,
+        req.body,
         req.user!.id
       );
       res.status(200).json({ success: true, data: updated });

@@ -10,8 +10,10 @@ export const ingestStatementSchema = z.object({
 });
 
 export const manualResolveSchema = z.object({
-  transactionId: z.string().uuid("Invalid transaction ID"),
-  notes: z.string().min(3, "Resolution notes must be at least 3 characters"),
+  status: z.nativeEnum(ReconciliationStatus).optional().default(ReconciliationStatus.MATCHED),
+  transactionId: z.string().optional(),
+  matchedTransactionId: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 export const listReconciliationQuerySchema = z.object({

@@ -10,7 +10,7 @@ export const updateAdminProfileSchema = z.object({
 
 export const uploadProfileImageSchema = z.object({
   fileName: z.string().min(1, "File name is required"),
-  mimeType: z.string().refine((type) => ["image/jpeg", "image/png", "image/webp"].includes(type), {
+  mimeType: z.string().refine((type) => ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/pjpeg"].includes(type.toLowerCase()), {
     message: "Only JPEG, PNG, and WebP images are allowed",
   }),
   base64Data: z.string().min(1, "Image content (base64) is required"),
