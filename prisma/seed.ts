@@ -2707,182 +2707,76 @@ async function main() {
     }
   }
 
-  // 5. Seed sample application and comprehensive financial records
-  const cr12Service = await prisma.service.findFirst({
-    where: { code: "SRV-BR-003" },
-  });
-  const incorporationService = await prisma.service.findFirst({
-    where: { code: "SRV-BR-001" },
-  });
-  const etaService = await prisma.service.findFirst({
-    where: { code: "SRV-IMM-002" },
-  });
+  // 5. Seed sample applications for John Kamau (SD-CL-000001) and comprehensive financial records
+  const cr12Service = await prisma.service.findFirst({ where: { code: "SRV-BR-003" } });
+  const incorporationService = await prisma.service.findFirst({ where: { code: "SRV-BR-001" } });
+  const tccService = await prisma.service.findFirst({ where: { code: "SRV-KRA-001" } });
+  const etaService = await prisma.service.findFirst({ where: { code: "SRV-IMM-002" } });
+  const pccService = await prisma.service.findFirst({ where: { code: "SRV-CLR-001" } });
 
-  if (cr12Service && clientProfile) {
-    // 5.1 Fully Paid Application & Invoice
-    const app1 = await prisma.application.upsert({
-      where: { applicationNumber: "SD-APP-2026-000001" },
-      update: {},
-      create: {
-        organizationId: organization.id,
-        clientId: clientProfile.id,
-        serviceId: cr12Service.id,
-        applicationNumber: "SD-APP-2026-000001",
-        status: "GOVERNMENT_PROCESSING",
-        priority: "NORMAL",
-        totalAmount: 2150.0,
-        paidAmount: 2150.0,
-        dueAmount: 0.0,
-      },
+  // Helper to attach requirement snapshots to seeded applications
+  const seedApplicationRequirements = async (appId: string, serviceId: string, markSatisfied: boolean = false) => {
+    const sReqs = await prisma.serviceRequirement.findMany({
+      where: { serviceId },
     });
+    for (const sReq of sReqs) {
+      const existing = await prisma.applicationRequirement.findFirst({
+        where: { applicationId: appId, code: sReq.code },
+      });
+      if (!existing) {
+        await prisma.applicationRequirement.create({
+          data: {
+            applicationId: appId,
+            serviceRequirementId: sReq.id,
+            code: sReq.code,
+            name: sReq.name,
+            description: sReq.description,
+            type: sReq.type,
+            required: sReq.required,
+            displayOrder: sReq.displayOrder,
+            isSatisfied: markSatisfied,
+            status: markSatisfied ? "APPROVED" : "PENDING",
+            satisfiedAt: markSatisfied ? new Date() : null,
+          },
+        });
+      }
+    }
+  };
 
-    const inv1 = await prisma.payment.upsert({
-      where: { invoiceNumber: "SD-INV-2026-000001" },
-      update: {},
-      create: {
-        organizationId: organization.id,
-        clientId: clientProfile.id,
-        applicationId: app1.id,
-        invoiceNumber: "SD-INV-2026-000001",
-        currency: "KES",
-        subtotal: 2150.0,
-        governmentFee: 650.0,
-        serviceFee: 1500.0,
-        otherFee: 0.0,
-        discount: 0.0,
-        tax: 0.0,
-        totalAmount: 2150.0,
-        amountPaid: 2150.0,
-        amountDue: 0.0,
-        status: "PAID",
-        issuedAt: new Date(),
-        paidAt: new Date(),
-        dueAt: new Date(Date.now() + 7 * 86400000),
-        lineItems: {
-          create: [
-            {
-              organizationId: organization.id,
-              description: "Official CR12 Search & Certification - Government Statutory Fee",
-              category: "GOVERNMENT_FEE",
-              quantity: 1,
-              unitAmount: 650.0,
-              totalAmount: 650.0,
-              isGovernmentFee: true,
-              isTaxable: false,
-            },
-            {
-              organizationId: organization.id,
-              description: "Official CR12 Search & Certification - Swift Doc Facilitation Fee",
-              category: "SERVICE_FEE",
-              quantity: 1,
-              unitAmount: 1500.0,
-              totalAmount: 1500.0,
-              isGovernmentFee: false,
-              isTaxable: false,
-            },
-          ],
-        },
-      },
-    });
+  let inv1: any = null;
+  let tx1: any = null;
+  let inv3: any = null;
+  let tx3: any = null;
 
-    const tx1 = await prisma.paymentTransaction.upsert({
-      where: { transactionNumber: "SD-TX-2026-000001" },
-      update: {},
-      create: {
-        organizationId: organization.id,
-        paymentId: inv1.id,
-        clientId: clientProfile.id,
-        applicationId: app1.id,
-        transactionNumber: "SD-TX-2026-000001",
-        transactionType: "PAYMENT",
-        paymentMethod: "MPESA",
-        amount: 2150.0,
-        currency: "KES",
-        status: "COMPLETED",
-        idempotencyKey: "SEED_TX_000001",
-        externalReference: "QKH76XZ12A",
-        paidAt: new Date(),
-      },
-    });
-
-    await prisma.paymentAllocation.upsert({
-      where: { id: "seed-allocation-01" },
-      update: {},
-      create: {
-        id: "seed-allocation-01",
-        organizationId: organization.id,
-        transactionId: tx1.id,
-        paymentId: inv1.id,
-        amount: 2150.0,
-        allocatedAt: new Date(),
-      },
-    });
-
-    await prisma.receipt.upsert({
-      where: { receiptNumber: "SD-REC-2026-000001" },
-      update: {},
-      create: {
-        organizationId: organization.id,
-        clientId: clientProfile.id,
-        applicationId: app1.id,
-        paymentId: inv1.id,
-        transactionId: tx1.id,
-        receiptNumber: "SD-REC-2026-000001",
-        amount: 2150.0,
-        currency: "KES",
-        paymentMethod: "MPESA",
-        transactionReference: "QKH76XZ12A",
-        payerName: clientProfile.fullName,
-        amountPaid: 2150.0,
-        remainingBalance: 0.0,
-        issuedAt: new Date(),
-      },
-    });
-
-    // Seed Reconciliation entry for Tx 1
-    await prisma.reconciliationRecord.upsert({
-      where: { id: "seed-recon-01" },
-      update: {},
-      create: {
-        id: "seed-recon-01",
-        organizationId: organization.id,
-        transactionId: tx1.id,
-        reference: "QKH76XZ12A",
-        amount: 2150.0,
-        currency: "KES",
-        provider: "MPESA",
-        status: "MATCHED",
-        reconciledAt: new Date(),
-        notes: "Auto-reconciled with Daraja M-Pesa statement",
-      },
-    });
-
-    // 5.2 Issued (Pending Payment) Application & Invoice
+  if (clientProfile) {
+    // 5.1 Application 1: Private Limited Company Registration (GOVERNMENT_PROCESSING)
     if (incorporationService) {
-      const app2 = await prisma.application.upsert({
-        where: { applicationNumber: "SD-APP-2026-000002" },
-        update: {},
+      const app1 = await prisma.application.upsert({
+        where: { applicationNumber: "SD-APP-2026-000001" },
+        update: { clientId: clientProfile.id },
         create: {
           organizationId: organization.id,
           clientId: clientProfile.id,
           serviceId: incorporationService.id,
-          applicationNumber: "SD-APP-2026-000002",
-          status: "REQUIREMENTS_PENDING",
+          applicationNumber: "SD-APP-2026-000001",
+          status: "GOVERNMENT_PROCESSING",
           priority: "HIGH",
           totalAmount: 16150.0,
-          paidAmount: 0.0,
-          dueAmount: 16150.0,
+          paidAmount: 16150.0,
+          dueAmount: 0.0,
         },
       });
 
-      await prisma.payment.upsert({
-        where: { invoiceNumber: "SD-INV-2026-000002" },
+      await seedApplicationRequirements(app1.id, incorporationService.id, true);
+
+      inv1 = await prisma.payment.upsert({
+        where: { invoiceNumber: "SD-INV-2026-000001" },
         update: {},
         create: {
           organizationId: organization.id,
           clientId: clientProfile.id,
-          applicationId: app2.id,
-          invoiceNumber: "SD-INV-2026-000002",
+          applicationId: app1.id,
+          invoiceNumber: "SD-INV-2026-000001",
           currency: "KES",
           subtotal: 16150.0,
           governmentFee: 10650.0,
@@ -2891,11 +2785,12 @@ async function main() {
           discount: 0.0,
           tax: 0.0,
           totalAmount: 16150.0,
-          amountPaid: 0.0,
-          amountDue: 16150.0,
-          status: "ISSUED",
-          issuedAt: new Date(),
-          dueAt: new Date(Date.now() + 5 * 86400000),
+          amountPaid: 16150.0,
+          amountDue: 0.0,
+          status: "PAID",
+          issuedAt: new Date(Date.now() - 7 * 86400000),
+          paidAt: new Date(Date.now() - 6 * 86400000),
+          dueAt: new Date(Date.now() + 7 * 86400000),
           lineItems: {
             create: [
               {
@@ -2910,7 +2805,7 @@ async function main() {
               },
               {
                 organizationId: organization.id,
-                description: "Private Limited Company Incorporation - Professional Legal & Advisory Fee",
+                description: "Private Limited Company Incorporation - Swift Doc Facilitation Fee",
                 category: "SERVICE_FEE",
                 quantity: 1,
                 unitAmount: 5500.0,
@@ -2922,28 +2817,170 @@ async function main() {
           },
         },
       });
-    }
 
-    // 5.3 Partially Paid Application with Bank Payment
-    let inv3: any = null;
-    let tx3: any = null;
+      tx1 = await prisma.paymentTransaction.upsert({
+        where: { transactionNumber: "SD-TX-2026-000001" },
+        update: {},
+        create: {
+          organizationId: organization.id,
+          paymentId: inv1.id,
+          clientId: clientProfile.id,
+          applicationId: app1.id,
+          transactionNumber: "SD-TX-2026-000001",
+          transactionType: "PAYMENT",
+          paymentMethod: "MPESA",
+          amount: 16150.0,
+          currency: "KES",
+          status: "COMPLETED",
+          idempotencyKey: "SEED_TX_000001",
+          externalReference: "QKH76XZ12A",
+          paidAt: new Date(Date.now() - 6 * 86400000),
+        },
+      });
 
-    if (etaService) {
-      const app3 = await prisma.application.upsert({
-        where: { applicationNumber: "SD-APP-2026-000003" },
+      await prisma.paymentAllocation.upsert({
+        where: { id: "seed-allocation-01" },
+        update: {},
+        create: {
+          id: "seed-allocation-01",
+          organizationId: organization.id,
+          transactionId: tx1.id,
+          paymentId: inv1.id,
+          amount: 16150.0,
+          allocatedAt: new Date(Date.now() - 6 * 86400000),
+        },
+      });
+
+      await prisma.receipt.upsert({
+        where: { receiptNumber: "SD-REC-2026-000001" },
         update: {},
         create: {
           organizationId: organization.id,
           clientId: clientProfile.id,
-          serviceId: etaService.id,
-          applicationNumber: "SD-APP-2026-000003",
-          status: "GOVERNMENT_PROCESSING",
-          priority: "URGENT",
-          totalAmount: 7000.0,
-          paidAmount: 4500.0,
-          dueAmount: 2500.0,
+          applicationId: app1.id,
+          paymentId: inv1.id,
+          transactionId: tx1.id,
+          receiptNumber: "SD-REC-2026-000001",
+          amount: 16150.0,
+          currency: "KES",
+          paymentMethod: "MPESA",
+          transactionReference: "QKH76XZ12A",
+          payerName: clientProfile.fullName,
+          amountPaid: 16150.0,
+          remainingBalance: 0.0,
+          issuedAt: new Date(Date.now() - 6 * 86400000),
         },
       });
+
+      await prisma.reconciliationRecord.upsert({
+        where: { id: "seed-recon-01" },
+        update: {},
+        create: {
+          id: "seed-recon-01",
+          organizationId: organization.id,
+          transactionId: tx1.id,
+          reference: "QKH76XZ12A",
+          amount: 16150.0,
+          currency: "KES",
+          provider: "MPESA",
+          status: "MATCHED",
+          reconciledAt: new Date(Date.now() - 6 * 86400000),
+          notes: "Auto-reconciled with M-Pesa C2B settlement",
+        },
+      });
+    }
+
+    // 5.2 Application 2: Official CR12 Search & Certification (DELIVERED)
+    if (cr12Service) {
+      const app2 = await prisma.application.upsert({
+        where: { applicationNumber: "SD-APP-2026-000002" },
+        update: { clientId: clientProfile.id },
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          serviceId: cr12Service.id,
+          applicationNumber: "SD-APP-2026-000002",
+          status: "DELIVERED",
+          priority: "NORMAL",
+          totalAmount: 2150.0,
+          paidAmount: 2150.0,
+          dueAmount: 0.0,
+          completedAt: new Date(Date.now() - 2 * 86400000),
+          deliveredAt: new Date(Date.now() - 1 * 86400000),
+        },
+      });
+
+      await seedApplicationRequirements(app2.id, cr12Service.id, true);
+
+      await prisma.payment.upsert({
+        where: { invoiceNumber: "SD-INV-2026-000002" },
+        update: {},
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          applicationId: app2.id,
+          invoiceNumber: "SD-INV-2026-000002",
+          currency: "KES",
+          subtotal: 2150.0,
+          governmentFee: 650.0,
+          serviceFee: 1500.0,
+          otherFee: 0.0,
+          discount: 0.0,
+          tax: 0.0,
+          totalAmount: 2150.0,
+          amountPaid: 2150.0,
+          amountDue: 0.0,
+          status: "PAID",
+          issuedAt: new Date(Date.now() - 10 * 86400000),
+          paidAt: new Date(Date.now() - 9 * 86400000),
+          dueAt: new Date(Date.now() - 3 * 86400000),
+          lineItems: {
+            create: [
+              {
+                organizationId: organization.id,
+                description: "Official CR12 Search & Certification - Statutory Fee",
+                category: "GOVERNMENT_FEE",
+                quantity: 1,
+                unitAmount: 650.0,
+                totalAmount: 650.0,
+                isGovernmentFee: true,
+                isTaxable: false,
+              },
+              {
+                organizationId: organization.id,
+                description: "Official CR12 Search & Certification - Processing Fee",
+                category: "SERVICE_FEE",
+                quantity: 1,
+                unitAmount: 1500.0,
+                totalAmount: 1500.0,
+                isGovernmentFee: false,
+                isTaxable: false,
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    // 5.3 Application 3: Tax Compliance Certificate (QUALITY_CHECK)
+    if (tccService) {
+      const app3 = await prisma.application.upsert({
+        where: { applicationNumber: "SD-APP-2026-000003" },
+        update: { clientId: clientProfile.id },
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          serviceId: tccService.id,
+          applicationNumber: "SD-APP-2026-000003",
+          status: "QUALITY_CHECK",
+          priority: "URGENT",
+          totalAmount: 3500.0,
+          paidAmount: 3500.0,
+          dueAmount: 0.0,
+        },
+      });
+
+      await seedApplicationRequirements(app3.id, tccService.id, true);
 
       inv3 = await prisma.payment.upsert({
         where: { invoiceNumber: "SD-INV-2026-000003" },
@@ -2954,6 +2991,107 @@ async function main() {
           applicationId: app3.id,
           invoiceNumber: "SD-INV-2026-000003",
           currency: "KES",
+          subtotal: 3500.0,
+          governmentFee: 0.0,
+          serviceFee: 3500.0,
+          otherFee: 0.0,
+          discount: 0.0,
+          tax: 0.0,
+          totalAmount: 3500.0,
+          amountPaid: 3500.0,
+          amountDue: 0.0,
+          status: "PAID",
+          issuedAt: new Date(Date.now() - 3 * 86400000),
+          paidAt: new Date(Date.now() - 2 * 86400000),
+          dueAt: new Date(Date.now() + 4 * 86400000),
+          lineItems: {
+            create: [
+              {
+                organizationId: organization.id,
+                description: "Tax Compliance Certificate (TCC) - Swift Doc Advisory & Filing Fee",
+                category: "SERVICE_FEE",
+                quantity: 1,
+                unitAmount: 3500.0,
+                totalAmount: 3500.0,
+                isGovernmentFee: false,
+                isTaxable: false,
+              },
+            ],
+          },
+        },
+      });
+
+      tx3 = await prisma.paymentTransaction.upsert({
+        where: { transactionNumber: "SD-TX-2026-000003" },
+        update: {},
+        create: {
+          organizationId: organization.id,
+          paymentId: inv3.id,
+          clientId: clientProfile.id,
+          applicationId: app3.id,
+          transactionNumber: "SD-TX-2026-000003",
+          transactionType: "PAYMENT",
+          paymentMethod: "BANK",
+          amount: 3500.0,
+          currency: "KES",
+          status: "COMPLETED",
+          idempotencyKey: "SEED_TX_000003",
+          externalReference: "FT2611099238",
+          paidAt: new Date(Date.now() - 2 * 86400000),
+        },
+      });
+
+      await prisma.receipt.upsert({
+        where: { receiptNumber: "SD-REC-2026-000003" },
+        update: {},
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          applicationId: app3.id,
+          paymentId: inv3.id,
+          transactionId: tx3.id,
+          receiptNumber: "SD-REC-2026-000003",
+          amount: 3500.0,
+          currency: "KES",
+          paymentMethod: "BANK",
+          transactionReference: "FT2611099238",
+          payerName: clientProfile.fullName,
+          amountPaid: 3500.0,
+          remainingBalance: 0.0,
+          issuedAt: new Date(Date.now() - 2 * 86400000),
+        },
+      });
+    }
+
+    // 5.4 Application 4: Kenya Electronic Travel Authorisation (REQUIREMENTS_PENDING)
+    if (etaService) {
+      const app4 = await prisma.application.upsert({
+        where: { applicationNumber: "SD-APP-2026-000004" },
+        update: { clientId: clientProfile.id },
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          serviceId: etaService.id,
+          applicationNumber: "SD-APP-2026-000004",
+          status: "REQUIREMENTS_PENDING",
+          priority: "HIGH",
+          totalAmount: 7000.0,
+          paidAmount: 0.0,
+          dueAmount: 7000.0,
+        },
+      });
+
+      await seedApplicationRequirements(app4.id, etaService.id, false);
+
+      await prisma.payment.upsert({
+        where: { invoiceNumber: "SD-INV-2026-000004" },
+        update: {},
+        create: {
+          organizationId: organization.id,
+          clientId: clientProfile.id,
+          applicationId: app4.id,
+          invoiceNumber: "SD-INV-2026-000004",
+          currency: "KES",
           subtotal: 7000.0,
           governmentFee: 4500.0,
           serviceFee: 2500.0,
@@ -2961,12 +3099,11 @@ async function main() {
           discount: 0.0,
           tax: 0.0,
           totalAmount: 7000.0,
-          amountPaid: 4500.0,
-          amountDue: 2500.0,
-          status: "PARTIALLY_PAID",
-          issuedAt: new Date(),
-          paidAt: new Date(),
-          dueAt: new Date(Date.now() + 3 * 86400000),
+          amountPaid: 0.0,
+          amountDue: 7000.0,
+          status: "ISSUED",
+          issuedAt: new Date(Date.now() - 1 * 86400000),
+          dueAt: new Date(Date.now() + 5 * 86400000),
           lineItems: {
             create: [
               {
@@ -2981,7 +3118,7 @@ async function main() {
               },
               {
                 organizationId: organization.id,
-                description: "Kenya Electronic Travel Authorisation (eTA) - Priority Processing Fee",
+                description: "Kenya Electronic Travel Authorisation (eTA) - Processing Fee",
                 category: "SERVICE_FEE",
                 quantity: 1,
                 unitAmount: 2500.0,
@@ -2993,92 +3130,82 @@ async function main() {
           },
         },
       });
+    }
 
-      tx3 = await prisma.paymentTransaction.upsert({
-        where: { transactionNumber: "SD-TX-2026-000002" },
-        update: {},
+    // 5.5 Application 5: Police Clearance Certificate (SUBMITTED)
+    if (pccService) {
+      const app5 = await prisma.application.upsert({
+        where: { applicationNumber: "SD-APP-2026-000005" },
+        update: { clientId: clientProfile.id },
         create: {
           organizationId: organization.id,
-          paymentId: inv3.id,
           clientId: clientProfile.id,
-          applicationId: app3.id,
-          transactionNumber: "SD-TX-2026-000002",
-          transactionType: "PAYMENT",
-          paymentMethod: "BANK",
-          amount: 4500.0,
-          currency: "KES",
-          status: "COMPLETED",
-          idempotencyKey: "SEED_TX_000002",
-          externalReference: "FT2611099238",
-          paidAt: new Date(),
+          serviceId: pccService.id,
+          applicationNumber: "SD-APP-2026-000005",
+          status: "SUBMITTED",
+          priority: "NORMAL",
+          totalAmount: 4000.0,
+          paidAmount: 4000.0,
+          dueAmount: 0.0,
         },
       });
 
-      await prisma.receipt.upsert({
-        where: { receiptNumber: "SD-REC-2026-000002" },
+      await seedApplicationRequirements(app5.id, pccService.id, true);
+
+      await prisma.payment.upsert({
+        where: { invoiceNumber: "SD-INV-2026-000005" },
         update: {},
         create: {
           organizationId: organization.id,
           clientId: clientProfile.id,
-          applicationId: app3.id,
-          paymentId: inv3.id,
-          transactionId: tx3.id,
-          receiptNumber: "SD-REC-2026-000002",
-          amount: 4500.0,
+          applicationId: app5.id,
+          invoiceNumber: "SD-INV-2026-000005",
           currency: "KES",
-          paymentMethod: "BANK",
-          transactionReference: "FT2611099238",
-          payerName: clientProfile.fullName,
-          amountPaid: 4500.0,
-          remainingBalance: 2500.0,
-          issuedAt: new Date(),
+          subtotal: 4000.0,
+          governmentFee: 1050.0,
+          serviceFee: 2950.0,
+          otherFee: 0.0,
+          discount: 0.0,
+          tax: 0.0,
+          totalAmount: 4000.0,
+          amountPaid: 4000.0,
+          amountDue: 0.0,
+          status: "PAID",
+          issuedAt: new Date(Date.now() - 4 * 86400000),
+          paidAt: new Date(Date.now() - 3 * 86400000),
+          dueAt: new Date(Date.now() + 3 * 86400000),
+          lineItems: {
+            create: [
+              {
+                organizationId: organization.id,
+                description: "Police Clearance Certificate (Good Conduct) - DCI Fee",
+                category: "GOVERNMENT_FEE",
+                quantity: 1,
+                unitAmount: 1050.0,
+                totalAmount: 1050.0,
+                isGovernmentFee: true,
+                isTaxable: false,
+              },
+              {
+                organizationId: organization.id,
+                description: "Police Clearance Certificate (Good Conduct) - Biometric Scheduling",
+                category: "SERVICE_FEE",
+                quantity: 1,
+                unitAmount: 2950.0,
+                totalAmount: 2950.0,
+                isGovernmentFee: false,
+                isTaxable: false,
+              },
+            ],
+          },
         },
       });
     }
 
-    // 5.4 Overdue Invoice
-    await prisma.payment.upsert({
-      where: { invoiceNumber: "SD-INV-2026-000004" },
-      update: {},
-      create: {
-        organizationId: organization.id,
-        clientId: clientProfile.id,
-        applicationId: app1.id,
-        invoiceNumber: "SD-INV-2026-000004",
-        currency: "KES",
-        subtotal: 5000.0,
-        governmentFee: 0.0,
-        serviceFee: 5000.0,
-        otherFee: 0.0,
-        discount: 0.0,
-        tax: 0.0,
-        totalAmount: 5000.0,
-        amountPaid: 0.0,
-        amountDue: 5000.0,
-        status: "OVERDUE",
-        issuedAt: new Date(Date.now() - 30 * 86400000),
-        dueAt: new Date(Date.now() - 15 * 86400000),
-        lineItems: {
-          create: [
-            {
-              organizationId: organization.id,
-              description: "Corporate Compliance Review & Statutory Health Check",
-              category: "SERVICE_FEE",
-              quantity: 1,
-              unitAmount: 5000.0,
-              totalAmount: 5000.0,
-              isGovernmentFee: false,
-              isTaxable: false,
-            },
-          ],
-        },
-      },
-    });
-
-    // 5.5 Seed Additional Multi-Category Client Dossiers (Applications 4 - 15)
+    // 5.6 Seed Additional Multi-Category Client Dossiers (Applications 6 - 15)
     const extraServices = await prisma.service.findMany({
       where: { organizationId: organization.id, deletedAt: null },
-      take: 12,
+      take: 10,
     });
 
     const statusCycle = [
@@ -3092,8 +3219,6 @@ async function main() {
       "DOCUMENT_RECEIVED",
       "QUALITY_CHECK",
       "READY_FOR_DELIVERY",
-      "DELIVERED",
-      "ON_HOLD",
     ];
 
     for (let i = 0; i < extraServices.length; i++) {
@@ -3119,6 +3244,8 @@ async function main() {
           dueAmount: 0.0,
         },
       });
+
+      await seedApplicationRequirements(app.id, srv.id, true);
 
       await prisma.applicationMessage.upsert({
         where: { id: `seed-msg-extra-${i}` },

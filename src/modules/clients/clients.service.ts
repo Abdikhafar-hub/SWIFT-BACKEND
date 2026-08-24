@@ -1,11 +1,11 @@
 import { prisma } from "../../infrastructure/database/prisma.js";
 import { Prisma, UserRole } from "@prisma/client";
-import { NotFoundError } from "../../common/errors/app-error.js";
+import { NotFoundError, BadRequestError } from "../../common/errors/app-error.js";
 import { generateClientNumber } from "../../common/utils/generators.js";
 import { detectDuplicateClient } from "../../common/utils/duplicate-detector.js";
 import { createAuditLog } from "../../common/utils/audit.js";
 import { PaginatedResult } from "../../common/types/index.js";
-
+import { storageService } from "../../infrastructure/storage/index.js";
 import { emailService } from "../../infrastructure/email/index.js";
 
 export class ClientService {
@@ -400,6 +400,87 @@ export class ClientService {
     });
 
     return client;
+  }
+
+  async uploadProfileImage(userId: string, input: { fileName: string; mimeType: string; base64Data: string }) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    const base64Clean = input.base64Data.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+    const buffer = Buffer.from(base64Clean, "base64");
+
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (buffer.length > MAX_SIZE) {
+      throw new BadRequestError("Profile image must be less than 5MB in size");
+    }
+
+    let mimeType = input.mimeType.toLowerCase();
+    if (mimeType === "image/jpg" || mimeType === "image/pjpeg") {
+      mimeType = "image/jpeg";
+    }
+
+    const uploadResult = await storageService.upload({
+      buffer,
+      fileName: input.fileName,
+      mimeType,
+      folder: "avatars",
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatarUrl: uploadResult.secureUrl,
+      },
+    });
+
+    await createAuditLog({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      actorEmail: user.email,
+      actorRole: UserRole.CLIENT,
+      action: "CLIENT_PROFILE_IMAGE_UPLOADED",
+      resource: "User",
+      resourceId: user.id,
+      metadata: { secureUrl: uploadResult.secureUrl, fileSize: buffer.length },
+    });
+
+    return {
+      avatarUrl: uploadResult.secureUrl,
+    };
+  }
+
+  async deleteProfileImage(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatarUrl: null,
+      },
+    });
+
+    await createAuditLog({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      actorEmail: user.email,
+      actorRole: UserRole.CLIENT,
+      action: "CLIENT_PROFILE_IMAGE_DELETED",
+      resource: "User",
+      resourceId: user.id,
+    });
+
+    return { success: true };
   }
 }
 

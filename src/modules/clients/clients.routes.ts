@@ -4,6 +4,7 @@ import { authenticate, requireClientAccess, requireRole } from "../../common/mid
 import { validate } from "../../common/middleware/validate.js";
 import {
   updateClientProfileSchema,
+  uploadClientProfileImageSchema,
   createAdminClientSchema,
   listClientsQuerySchema,
   listRegistrationsQuerySchema,
@@ -16,6 +17,8 @@ export const clientProfileRoutes = Router();
 clientProfileRoutes.use(authenticate, requireClientAccess);
 clientProfileRoutes.get("/", clientController.getProfile);
 clientProfileRoutes.patch("/", validate({ body: updateClientProfileSchema }), clientController.updateProfile);
+clientProfileRoutes.post("/profile-image", validate({ body: uploadClientProfileImageSchema }), clientController.uploadProfileImage);
+clientProfileRoutes.delete("/profile-image", clientController.deleteProfileImage);
 
 // Admin client operations routes: /api/v1/admin/clients
 export const adminClientRoutes = Router();

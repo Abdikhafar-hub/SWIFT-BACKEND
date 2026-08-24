@@ -151,6 +151,30 @@ export class ClientController {
       next(error);
     }
   }
+
+  async uploadProfileImage(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await clientService.uploadProfileImage(req.user!.id, req.body);
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteProfileImage(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await clientService.deleteProfileImage(req.user!.id);
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const clientController = new ClientController();
